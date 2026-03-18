@@ -53,18 +53,30 @@ struct InvoiceEditorView: View {
 
 struct PaymentsView: View {
     @EnvironmentObject private var vm: AppViewModel
-    @State private var amount: Double = 0
+    @State private var amountsByDocument: [Int64: Double] = [:]
+
     var body: some View {
         VStack(alignment: .leading) {
             Text("Payments").font(.largeTitle).bold()
             ForEach(vm.businessDocuments.filter { $0.type == DocumentType.faktura.rawValue }) { doc in
                 HStack {
                     Text("\(doc.number.isEmpty ? "draft" : doc.number) saldo: \(doc.balanceDue, specifier: "%.2f")")
-                    TextField("Сумма", value: $amount, format: .number)
-                    Button("Внести") { vm.addPayment(documentId: doc.id, amount: amount, method: "Bankgiro", reference: "manual") }
+                    TextField("Сумма", value: paymentBinding(for: doc.id), format: .number)
+                        .frame(width: 120)
+                    Button("Внести") {
+                        let amount = amountsByDocument[doc.id, default: 0]
+                        vm.addPayment(documentId: doc.id, amount: amount, method: "Bankgiro", reference: "manual")
+                    }
                 }
             }
         }
+    }
+
+    private func paymentBinding(for documentId: Int64) -> Binding<Double> {
+        Binding(
+            get: { amountsByDocument[documentId, default: 0] },
+            set: { amountsByDocument[documentId] = $0 }
+        )
     }
 }
 

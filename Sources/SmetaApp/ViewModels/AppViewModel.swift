@@ -20,6 +20,8 @@ final class AppViewModel: ObservableObject {
     @Published var taxProfiles: [TaxProfile] = []
     @Published var selectedProject: Project?
     @Published var searchText: String = ""
+    @Published var errorMessage: String?
+    @Published var infoMessage: String?
 
     @Published var selectedWorksByRoom: [Int64: [WorkCatalogItem]] = [:]
     @Published var selectedMaterialsByRoom: [Int64: [MaterialCatalogItem]] = [:]
@@ -28,6 +30,17 @@ final class AppViewModel: ObservableObject {
     @Published var overheadCoefficient: Double = 1.15
     @Published var selectedSpeedId: Int64 = 0
     @Published var calculationResult: CalculationResult?
+
+    var filteredBusinessDocuments: [BusinessDocument] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return businessDocuments }
+        return businessDocuments.filter { doc in
+            doc.title.lowercased().contains(query) ||
+            doc.number.lowercased().contains(query) ||
+            doc.type.lowercased().contains(query) ||
+            doc.status.lowercased().contains(query)
+        }
+    }
 
     private let repository: AppRepository
     private let calculator = EstimateCalculator()
@@ -69,23 +82,46 @@ final class AppViewModel: ObservableObject {
     }
 
     func addClient(name: String, email: String, phone: String, address: String) {
-        do { _ = try repository.insertClient(Client(id: 0, name: name, email: email, phone: phone, address: address)); try reloadAll() } catch { print(error) }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { errorMessage = "Имя клиента обязательно"; return }
+        do {
+            _ = try repository.insertClient(Client(id: 0, name: trimmed, email: email, phone: phone, address: address))
+            infoMessage = "Клиент сохранён"
+            try reloadAll()
+        } catch {
+            errorMessage = "Не удалось сохранить клиента: \(error.localizedDescription)"
+        }
     }
 
     func addProperty(clientId: Int64, name: String, address: String) {
-        do { _ = try repository.insertProperty(PropertyObject(id: 0, clientId: clientId, name: name, address: address)); try reloadAll() } catch { print(error) }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { errorMessage = "Название объекта обязательно"; return }
+        do {
+            _ = try repository.insertProperty(PropertyObject(id: 0, clientId: clientId, name: trimmed, address: address))
+            infoMessage = "Объект сохранён"
+            try reloadAll()
+        } catch {
+            errorMessage = "Не удалось сохранить объект: \(error.localizedDescription)"
+        }
     }
 
     func addProject(clientId: Int64, propertyId: Int64, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { errorMessage = "Название проекта обязательно"; return }
         do {
             let speed = selectedSpeedId == 0 ? (speedProfiles.first?.id ?? 1) : selectedSpeedId
-            _ = try repository.insertProject(Project(id: 0, clientId: clientId, propertyId: propertyId, name: name, speedProfileId: speed, createdAt: Date()))
+            _ = try repository.insertProject(Project(id: 0, clientId: clientId, propertyId: propertyId, name: trimmed, speedProfileId: speed, createdAt: Date()))
+            infoMessage = "Проект создан"
             try reloadAll()
-        } catch { print(error) }
+        } catch {
+            errorMessage = "Не удалось создать проект: \(error.localizedDescription)"
+        }
     }
 
     func addRoom(projectId: Int64, name: String, area: Double, height: Double, length: Double = 0, width: Double = 0, manualWallAdjustment: Double = 0, roomType: String = "") {
         let floorArea = area > 0 ? area : (length > 0 && width > 0 ? length * width : 0)
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { errorMessage = "Название помещения обязательно"; return }
+        guard floorArea > 0, height > 0 else { errorMessage = "Площадь и высота должны быть больше нуля"; return }
         let wallAuto = length > 0 && width > 0 ? (2 * (length + width) * height) : floorArea * 2.8
         let room = Room(id: 0, projectId: projectId, name: name, area: floorArea, height: height, roomType: roomType, length: length, width: width, ceilingArea: floorArea, wallAreaAuto: wallAuto, wallAreaManualAdjustment: manualWallAdjustment)
         do {
@@ -97,7 +133,7 @@ final class AppViewModel: ObservableObject {
                 Surface(id: 0, roomId: roomId, type: "plinth", name: "Плинтус", area: 0, perimeter: length > 0 && width > 0 ? 2 * (length + width) : 0, isCustom: false, source: "auto", manualAdjustment: 0)
             ])
             try reloadAll()
-        } catch { print(error) }
+        } catch { errorMessage = "Не удалось сохранить помещение: \(error.localizedDescription)" }
     }
 
     func duplicateRoom(_ room: Room) {
@@ -168,6 +204,22 @@ final class AppViewModel: ObservableObject {
 
 
     func createDraftDocument(type: DocumentType, projectId: Int64, title: String, customerType: CustomerType, taxMode: TaxMode, lines: [BusinessDocumentLine], rotPercent: Double = 0) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { errorMessage = "Название документа обязательно"; return }
+        guard !lines.isEmpty else { errorMessage = "Документ должен содержать минимум одну строку"; return }
+        guard lines.allSatisfy({ $0.quantity > 0 && $0.unitPrice >= 0 && !$0.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            errorMessage = "Проверьте строки документа: описание, количество и цены"
+            return
+        }
+        if taxMode == .reverseCharge && customerType != .b2b {
+            errorMessage = "Reverse charge допустим только для B2B"
+            return
+        }
+        if rotPercent > 0 && customerType != .b2c {
+            errorMessage = "ROT возможен только для B2C"
+            return
+        }
+
         do {
             let labor = lines.filter { $0.lineType == "labor" }.reduce(0) { $0 + $1.total }
             let material = lines.filter { $0.lineType == "material" }.reduce(0) { $0 + $1.total }
@@ -178,27 +230,62 @@ final class AppViewModel: ObservableObject {
             let subtotal = labor + material + other
             let vatAmount = subtotal * vatRate
             let total = subtotal + vatAmount - rotReduction
-            let doc = BusinessDocument(id: 0, projectId: projectId, type: type.rawValue, status: DocumentStatus.draft.rawValue, number: "", title: title, issueDate: Date(), dueDate: Calendar.current.date(byAdding: .day, value: 30, to: Date()), customerType: customerType.rawValue, taxMode: taxMode.rawValue, currency: "SEK", subtotalLabor: labor, subtotalMaterial: material, subtotalOther: other, vatRate: vatRate, vatAmount: vatAmount, rotEligibleLabor: rotEligible, rotReduction: rotReduction, totalAmount: total, paidAmount: 0, balanceDue: total, relatedDocumentId: nil, notes: "")
+            guard total >= 0 else { errorMessage = "Итоговая сумма не может быть отрицательной"; return }
+
+            let doc = BusinessDocument(id: 0, projectId: projectId, type: type.rawValue, status: DocumentStatus.draft.rawValue, number: "", title: trimmedTitle, issueDate: Date(), dueDate: Calendar.current.date(byAdding: .day, value: 30, to: Date()), customerType: customerType.rawValue, taxMode: taxMode.rawValue, currency: "SEK", subtotalLabor: labor, subtotalMaterial: material, subtotalOther: other, vatRate: vatRate, vatAmount: vatAmount, rotEligibleLabor: rotEligible, rotReduction: rotReduction, totalAmount: total, paidAmount: 0, balanceDue: total, relatedDocumentId: nil, notes: "")
             _ = try repository.createBusinessDocument(doc, lines: lines)
             try repository.updateProjectStatus(projectId: projectId, status: .calculation)
+            infoMessage = "Черновик документа создан"
             try reloadAll()
-        } catch { print(error) }
+        } catch {
+            errorMessage = "Не удалось создать документ: \(error.localizedDescription)"
+        }
     }
 
     func finalizeDocument(_ doc: BusinessDocument) {
+        guard !doc.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { errorMessage = "Нельзя финализировать документ без заголовка"; return }
         do {
             let json = """{"title":"\(doc.title)","total":\(doc.totalAmount),"vat":\(doc.vatAmount),"rotReduction":\(doc.rotReduction)}"""
             try repository.finalizeDocument(documentId: doc.id, templateId: templates.first?.id, snapshotJSON: json)
+            infoMessage = "Документ финализирован"
             try reloadAll()
-        } catch { print(error) }
+        } catch {
+            errorMessage = "Не удалось финализировать документ: \(error.localizedDescription)"
+        }
     }
 
     func addPayment(documentId: Int64, amount: Double, method: String, reference: String) {
-        do { try repository.registerPayment(documentId: documentId, amount: amount, method: method, reference: reference); try reloadAll() } catch { print(error) }
+        do {
+            try repository.registerPayment(documentId: documentId, amount: amount, method: method, reference: reference)
+            infoMessage = "Оплата добавлена"
+            try reloadAll()
+        } catch {
+            errorMessage = "Не удалось добавить оплату: \(error.localizedDescription)"
+        }
     }
 
-    func backupDatabase() { do { try backupService.backupViaDialog() } catch { print(error) } }
-    func restoreDatabase() { do { try backupService.restoreViaDialog(); try reloadAll() } catch { print(error) } }
+    func backupDatabase() {
+        do {
+            try backupService.backupViaDialog()
+            infoMessage = "Backup успешно создан"
+        } catch {
+            errorMessage = "Backup завершился ошибкой: \(error.localizedDescription)"
+        }
+    }
+
+    func restoreDatabase() {
+        do {
+            try backupService.restoreViaDialog()
+            infoMessage = "База восстановлена"
+            try reloadAll()
+        } catch {
+            errorMessage = "Restore завершился ошибкой: \(error.localizedDescription)"
+        }
+    }
+
+    func dataLocationPath() -> String {
+        backupService.dataLocation().path
+    }
 }
 
 private extension AppRepository {

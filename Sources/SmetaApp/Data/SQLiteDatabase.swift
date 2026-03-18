@@ -23,6 +23,7 @@ final class SQLiteDatabase {
         if sqlite3_open(dbPath.path, &db) != SQLITE_OK {
             throw DatabaseError.openFailed
         }
+        try configureConnection()
     }
 
     deinit { sqlite3_close(db) }
@@ -460,6 +461,11 @@ final class SQLiteDatabase {
         try? execute("ALTER TABLE material_catalog ADD COLUMN stock REAL NOT NULL DEFAULT 0;")
         try? execute("ALTER TABLE material_catalog ADD COLUMN comment TEXT NOT NULL DEFAULT '';")
         try? execute("ALTER TABLE material_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
+
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_business_documents_number_unique ON business_documents(number) WHERE number <> '';")
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_document_series_type_unique ON document_series(document_type);")
+        try execute("CREATE INDEX IF NOT EXISTS idx_payment_allocations_document ON payment_allocations(document_id);")
+        try execute("CREATE INDEX IF NOT EXISTS idx_projects_updated_lookup ON projects(id, created_at);")
     }
 
     func copyDatabase(to destination: URL) throws {
@@ -467,6 +473,7 @@ final class SQLiteDatabase {
     }
 
     func restoreDatabase(from source: URL) throws {
+        try validateBackup(at: source)
         sqlite3_close(db)
         if FileManager.default.fileExists(atPath: dbPath.path) {
             try FileManager.default.removeItem(at: dbPath)
@@ -475,5 +482,39 @@ final class SQLiteDatabase {
         if sqlite3_open(dbPath.path, &db) != SQLITE_OK {
             throw DatabaseError.openFailed
         }
+        try configureConnection()
+    }
+
+    func dataFolder() -> URL {
+        dbPath.deletingLastPathComponent()
+    }
+
+    func validateBackup(at source: URL) throws {
+        var backupDB: OpaquePointer?
+        guard sqlite3_open_v2(source.path, &backupDB, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let backupDB else {
+            throw DatabaseError.executeFailed("Не удалось открыть backup-файл")
+        }
+        defer { sqlite3_close(backupDB) }
+
+        let requiredTables = ["companies", "clients", "projects", "business_documents", "document_series", "payments"]
+        for table in requiredTables {
+            let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(backupDB, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+                throw DatabaseError.executeFailed("Не удалось проверить структуру backup")
+            }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, table, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) != SQLITE_ROW {
+                throw DatabaseError.executeFailed("Backup несовместим: отсутствует таблица \(table)")
+            }
+        }
+    }
+
+    private func configureConnection() throws {
+        try execute("PRAGMA foreign_keys = ON;")
+        try execute("PRAGMA journal_mode = WAL;")
+        try execute("PRAGMA synchronous = NORMAL;")
+        try execute("PRAGMA busy_timeout = 5000;")
     }
 }
