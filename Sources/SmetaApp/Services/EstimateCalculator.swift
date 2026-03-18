@@ -39,7 +39,8 @@ final class EstimateCalculator {
                    speed: SpeedProfile,
                    pricingMode: PricingMode,
                    laborRate: Double,
-                   overhead: Double) -> CalculationResult {
+                   overhead: Double,
+                   rules: CalculationRules) -> CalculationResult {
         var rows: [CalculationRow] = []
 
         for room in rooms {
@@ -93,12 +94,12 @@ final class EstimateCalculator {
         let days = rows.reduce(0) { $0 + $1.days }
         let labor = rows.reduce(0) { $0 + $1.laborCost }
         let materials = rows.reduce(0) { $0 + $1.materialCost }
-        let transport = (labor + materials) * 0.02
-        let equipment = labor * 0.03
-        let waste = materials * 0.04
+        let transport = (labor + materials) * rules.transportPercent
+        let equipment = labor * rules.equipmentPercent
+        let waste = materials * rules.wastePercent
         let subtotal = labor + materials + transport + equipment + waste
-        let margin = subtotal * 0.12
-        let moms = (subtotal + margin) * 0.25
+        let margin = subtotal * rules.marginPercent
+        let moms = (subtotal + margin) * rules.momsPercent
         return CalculationResult(rows: rows,
                                  totalHours: hours,
                                  totalDays: days,

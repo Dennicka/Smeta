@@ -33,6 +33,7 @@ final class AppViewModel: ObservableObject {
 
     @Published var laborRatePerHour: Double = 600
     @Published var overheadCoefficient: Double = 1.15
+    @Published var calculationRules: CalculationRules = .default
     @Published var selectedSpeedId: Int64 = 0
     @Published var calculationResult: CalculationResult?
 
@@ -92,6 +93,7 @@ final class AppViewModel: ObservableObject {
         businessDocuments = try repository.businessDocuments()
         documentSeries = try repository.documentSeries()
         taxProfiles = try repository.taxProfiles()
+        calculationRules = try repository.calculationRules()
         suppliers = (try? repository.suppliers()) ?? []
         receivableBuckets = stage5Service.receivablesBuckets((try? repository.receivablesDocuments()) ?? [])
         if let project = selectedProject {
@@ -186,7 +188,8 @@ final class AppViewModel: ObservableObject {
                                                  speed: speed,
                                                  pricingMode: pricingMode,
                                                  laborRate: laborRatePerHour,
-                                                 overhead: overheadCoefficient)
+                                                 overhead: overheadCoefficient,
+                                                 rules: calculationRules)
     }
 
     func saveEstimateAndGenerateDocument() {

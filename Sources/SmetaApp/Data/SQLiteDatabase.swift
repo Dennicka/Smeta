@@ -409,7 +409,26 @@ final class SQLiteDatabase {
             created_at REAL NOT NULL,
             FOREIGN KEY(project_id) REFERENCES projects(id)
         );
+        CREATE TABLE IF NOT EXISTS calculation_rules (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            transport_percent REAL NOT NULL DEFAULT 0.02,
+            equipment_percent REAL NOT NULL DEFAULT 0.03,
+            waste_percent REAL NOT NULL DEFAULT 0.04,
+            margin_percent REAL NOT NULL DEFAULT 0.12,
+            moms_percent REAL NOT NULL DEFAULT 0.25
+        );
 
+        """)
+
+        try execute("""
+        INSERT OR IGNORE INTO calculation_rules (
+            id,
+            transport_percent,
+            equipment_percent,
+            waste_percent,
+            margin_percent,
+            moms_percent
+        ) VALUES (1, 0.02, 0.03, 0.04, 0.12, 0.25);
         """)
 
         try? execute("ALTER TABLE projects ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'draft';")

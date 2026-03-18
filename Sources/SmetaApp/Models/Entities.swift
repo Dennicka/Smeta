@@ -309,6 +309,24 @@ struct Estimate: PersistableEntity {
     var createdAt: Date
 }
 
+struct CalculationRules: PersistableEntity {
+    var id: Int64
+    var transportPercent: Double
+    var equipmentPercent: Double
+    var wastePercent: Double
+    var marginPercent: Double
+    var momsPercent: Double
+
+    static let `default` = CalculationRules(
+        id: 1,
+        transportPercent: 0.02,
+        equipmentPercent: 0.03,
+        wastePercent: 0.04,
+        marginPercent: 0.12,
+        momsPercent: 0.25
+    )
+}
+
 struct EstimateLine: PersistableEntity {
     var id: Int64
     var estimateId: Int64
