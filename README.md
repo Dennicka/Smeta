@@ -84,6 +84,22 @@
 swift run SmetaApp
 ```
 
+### macOS scripts (готово для копирования)
+```bash
+./Scripts/macos_build.sh
+```
+Собирает `release/Smeta.app`.
+
+```bash
+./Scripts/macos_smoke_check.sh
+```
+Проверяет, что приложение стартует, и пишет лог в `release/smoke-logs/runtime.log`.
+
+```bash
+./Scripts/macos_package_dmg.sh
+```
+Упаковывает `release/Smeta.app` в `release/Smeta.dmg`.
+
 > На Linux сборка UI-таргета невозможна, т.к. SwiftUI/AppKit доступны только на macOS.
 
 ## Что останется на Stage 2
