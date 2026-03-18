@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import Foundation
 import AppKit
 
@@ -43,3 +44,4 @@ final class PDFDocumentService {
     }
 
 }
+#endif

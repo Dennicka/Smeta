@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 enum Screen: String, CaseIterable, Identifiable {
@@ -82,3 +83,4 @@ struct RootView: View {
         }
     }
 }
+#endif

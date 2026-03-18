@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 struct OfferEditorView: View {
@@ -146,3 +147,4 @@ struct TaxSettingsView: View {
         }
     }
 }
+#endif

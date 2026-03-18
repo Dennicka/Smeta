@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import AppKit
 
@@ -68,3 +69,4 @@ struct Stage5OperationsView: View {
         }
     }
 }
+#endif

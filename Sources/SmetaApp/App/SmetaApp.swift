@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 @main
@@ -25,3 +26,4 @@ struct SmetaApp: App {
         }
     }
 }
+#endif

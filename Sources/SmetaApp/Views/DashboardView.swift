@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 struct DashboardView: View {
@@ -27,3 +28,4 @@ private struct StatCard: View {
         }.padding().frame(maxWidth: .infinity, alignment: .leading).background(.thinMaterial).clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
+#endif

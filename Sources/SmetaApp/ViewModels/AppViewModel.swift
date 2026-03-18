@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import AppKit
 
@@ -65,8 +66,12 @@ final class AppViewModel: ObservableObject {
             selectedProject = projects.first
             selectedSpeedId = speedProfiles.first?.id ?? 0
         } catch {
-            print("Bootstrap error: \(error)")
+            present(error: error, prefix: "Ошибка инициализации")
         }
+    }
+
+    private func present(error: Error, prefix: String) {
+        errorMessage = "\(prefix): \(error.localizedDescription)"
     }
 
     func reloadAll() throws {
@@ -152,17 +157,17 @@ final class AppViewModel: ObservableObject {
     }
 
     func addOpening(roomId: Int64, type: String, name: String, width: Double, height: Double, count: Int, subtract: Bool) {
-        do { try repository.addOpening(Opening(id: 0, roomId: roomId, surfaceId: nil, type: type, name: name, width: width, height: height, count: count, subtractFromWallArea: subtract)); try reloadAll() } catch { print(error) }
+        do { try repository.addOpening(Opening(id: 0, roomId: roomId, surfaceId: nil, type: type, name: name, width: width, height: height, count: count, subtractFromWallArea: subtract)); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить проём") }
     }
 
-    func addWork(_ item: WorkCatalogItem) { do { _ = try repository.insertWorkItem(item); try reloadAll() } catch { print(error) } }
-    func updateWork(_ item: WorkCatalogItem) { do { try repository.updateWorkItem(item); try reloadAll() } catch { print(error) } }
-    func addMaterial(_ item: MaterialCatalogItem) { do { _ = try repository.insertMaterialItem(item); try reloadAll() } catch { print(error) } }
-    func updateMaterial(_ item: MaterialCatalogItem) { do { try repository.updateMaterialItem(item); try reloadAll() } catch { print(error) } }
-    func addSpeed(_ item: SpeedProfile) { do { _ = try repository.insertSpeedProfile(item); try reloadAll() } catch { print(error) } }
-    func updateSpeed(_ item: SpeedProfile) { do { try repository.updateSpeedProfile(item); try reloadAll() } catch { print(error) } }
-    func addTemplate(_ item: DocumentTemplate) { do { _ = try repository.insertTemplate(item); try reloadAll() } catch { print(error) } }
-    func updateTemplate(_ item: DocumentTemplate) { do { try repository.updateTemplate(item); try reloadAll() } catch { print(error) } }
+    func addWork(_ item: WorkCatalogItem) { do { _ = try repository.insertWorkItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить работу") } }
+    func updateWork(_ item: WorkCatalogItem) { do { try repository.updateWorkItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить работу") } }
+    func addMaterial(_ item: MaterialCatalogItem) { do { _ = try repository.insertMaterialItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить материал") } }
+    func updateMaterial(_ item: MaterialCatalogItem) { do { try repository.updateMaterialItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить материал") } }
+    func addSpeed(_ item: SpeedProfile) { do { _ = try repository.insertSpeedProfile(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить профиль скорости") } }
+    func updateSpeed(_ item: SpeedProfile) { do { try repository.updateSpeedProfile(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить профиль скорости") } }
+    func addTemplate(_ item: DocumentTemplate) { do { _ = try repository.insertTemplate(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить шаблон") } }
+    func updateTemplate(_ item: DocumentTemplate) { do { try repository.updateTemplate(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить шаблон") } }
 
     func calculate() {
         guard let project = selectedProject else { return }
@@ -209,7 +214,7 @@ final class AppViewModel: ObservableObject {
                 try repository.insertGeneratedDocument(GeneratedDocument(id: 0, estimateId: estimateId, templateId: template.id, title: "Offert \(project.name)", path: url.path, generatedAt: Date()))
                 try reloadAll()
             }
-        } catch { print(error) }
+        } catch { present(error: error, prefix: "Ошибка генерации Offert") }
     }
 
 
@@ -402,3 +407,4 @@ private extension AppRepository {
         try properties(for: nil)
     }
 }
+#endif

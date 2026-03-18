@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 struct ClientsView: View {
@@ -26,3 +27,4 @@ struct ClientsView: View {
         }
     }
 }
+#endif
