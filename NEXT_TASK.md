@@ -1,24 +1,24 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-013 — предсказуемый migration/update flow вместо opportunistic ALTER TABLE.
+D-014 — очистка acceptance/release статусов от optimistic PASS без runtime evidence.
 
 ## Scope
-- Спроектировать и внедрить версионированные миграции схемы БД с явным порядком применения.
-- Убрать зависимость от `try? ALTER TABLE ...` как основного механизма эволюции схемы.
-- Добавить проверяемый migration evidence: команда, которая поднимает старую схему до актуальной и проходит smoke-check.
+- Провести ревизию acceptance/release документов и убрать optimistic PASS, не подтверждённые runtime evidence.
+- Согласовать `ACCEPTANCE_CHECKLIST.md`, `FINAL_VERIFICATION_REPORT.md`, `CURRENT_STATE.md`, `DEFECT_BACKLOG.md` по единому evidence-based правилу.
+- Явно разделить статусы на: independently confirmed / repository-claimed / unconfirmed.
 
 ## Out of scope
-- macOS runtime E2E задачи (`D-001..D-003`, D-010 AppKit proof).
-- Закрытие D-004 (`SQLite3` module map в Linux) сверх минимально необходимого для migration evidence.
-- Любые функциональные фичи вне migration path.
+- Любые изменения бизнес-логики и новые фичи.
+- Попытка «закрыть» macOS-only задачи без релевантной среды (`D-001..D-003`, D-010 AppKit proof).
+- Рефактор migration-кода (D-013 уже закрыт и подтверждён).
 
 ## Acceptance criteria
-1. Migration flow детерминированный и повторяемый (idempotent там, где требуется).
-2. Старый state БД корректно доводится до актуальной схемы без ручных правок.
-3. Есть runtime evidence с exact commands/raw outputs/exit codes.
+1. В acceptance/release документах нет PASS, основанных только на code-audit/assumption.
+2. Для спорных пунктов есть явная маркировка confirmed vs unconfirmed/repository-claimed.
+3. Все изменения статусов подтверждены ссылками на конкретные evidence-команды/outputs.
 
 ## Evidence requirements
 - Exact commands + full raw outputs + exit codes.
-- Отдельный evidence-файл по D-013 migration pass.
+- Отдельный evidence-файл по D-014 audit/remarking pass.
 - Обновлённые `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md`.
