@@ -17,6 +17,9 @@
 - Добавлены/обновлены автотесты `DocumentSnapshotBuilderTests` (включая проверку final number/finalized status), script `Scripts/verify_document_snapshot_builder.swift` (builder-level PASS) и отдельный repository-level script `Scripts/verify_finalize_document_with_snapshot.swift` для позитивного/негативного сценариев `finalizeDocumentWithSnapshot(...)`.
 - Для D-009 получен реальный repository-level runtime PASS в Linux через валидный `SQLite3` module map (`/tmp/sqlite3.modulemap`): verification script подтверждает final status/number, сохранение full snapshot rows, rollback при исключении в snapshotBuilder и корректный legacy parse path.
 - Для test verification в Linux: `swift test --filter ...` по-прежнему падает из-за D-004 (`no such module 'SQLite3'` в `SmetaApp` build path), поэтому воспроизводимые зелёные команды для document-builder/snapshot fix — `swiftc Sources/SmetaCore/Models/Entities.swift Sources/SmetaCore/Services/DocumentDraftBuilder.swift Scripts/verify_document_draft_builder.swift -o /tmp/verify_document_draft_builder && /tmp/verify_document_draft_builder` и `swiftc Sources/SmetaCore/Models/Entities.swift Sources/SmetaCore/Services/DocumentSnapshotBuilder.swift Scripts/verify_document_snapshot_builder.swift -o /tmp/verify_document_snapshot_builder && /tmp/verify_document_snapshot_builder`.
+- Для D-010 внедрён единый export payload pipeline `DocumentExportPipeline` (в `SmetaApp` и `SmetaCore`): для Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse контент берётся только из full snapshot (если есть) или из repository document+lines, без demo/fake fallback; при отсутствии строк возвращается явная ошибка `missingLines`.
+- В `AppViewModel` добавлен единый `exportDocumentPDF(...)` путь для пяти типов D-010 с вызовом `generateBusinessDocumentPDF(...)` и `export_logs` записью `business_document_pdf`.
+- Добавлен evidence-проход `Scripts/verify_document_export_pipeline.swift` и `EVIDENCE/D010_EXPORT_PIPELINE.md`: service-level runtime PASS для всех 5 типов в Linux, но AppKit PDF e2e (SavePanel/UI runtime) остаётся неподтверждённым вне macOS.
 
 ## Repository-claimed / documented (внутренние заявления репозитория, не независимое подтверждение)
 - В `ACCEPTANCE_CHECKLIST.md` заявлено 43 PASS / 15 FAIL.
@@ -26,7 +29,9 @@
 
 ## Unconfirmed (требует независимого runtime evidence)
 - Любой macOS-only runtime: запуск `SmetaApp`, AppKit dialogs, Preview/Print, `.app`/`.dmg` packaging, clean install/restart lifecycle.
-- Корректность end-to-end document generation на реальных данных проекта для Avtal/Kreditfaktura/ÄTA/Påminnelse без hardcoded/demo substitution (Offert/Faktura path уже переведены на repository-backed builder, но macOS runtime E2E всё ещё не подтверждён).
+- D-008 остаётся `PARTIAL`: end-to-end document generation contour для Avtal/Kreditfaktura/ÄTA/Påminnelse всё ещё не подтверждён как repository-backed/snapshot-backed без hardcoded/demo substitution во всех ветках.
+- D-010 partial export pipeline НЕ закрывает автоматически generation contour из D-008; export wiring и generation wiring должны считаться раздельно до отдельного доказательства по D-008.
+- Полный macOS runtime e2e для фактического PDF export (NSSavePanel/AppKit file flow) по Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
 - Реальная корректность CSV update/upsert semantics (а не имитация обновлений через дубликаты).
 - Конфигурируемость процентов расчёта через settings/rules вместо hardcoded magic values.
 - Надёжность migration/update flow на предсказуемой схеме, а не на opportunistic ALTER TABLE.
