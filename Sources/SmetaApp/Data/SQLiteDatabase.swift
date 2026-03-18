@@ -8,6 +8,18 @@ enum DatabaseError: Error {
 }
 
 final class SQLiteDatabase {
+    struct MigrationRecord: Equatable {
+        let version: Int
+        let id: String
+        let appliedAt: Double
+    }
+
+    private struct MigrationStep {
+        let version: Int
+        let id: String
+        let apply: (SQLiteDatabase) throws -> Void
+    }
+
     private var db: OpaquePointer?
     let dbPath: URL
 
@@ -55,6 +67,48 @@ final class SQLiteDatabase {
     }
 
     func initializeSchema() throws {
+        try ensureMigrationHistoryTable()
+        let appliedVersions = try fetchAppliedMigrationVersions()
+
+        for migration in Self.orderedMigrations {
+            guard !appliedVersions.contains(migration.version) else { continue }
+            try execute("BEGIN IMMEDIATE TRANSACTION;")
+            do {
+                try migration.apply(self)
+                try recordMigration(version: migration.version, id: migration.id)
+                try execute("COMMIT;")
+            } catch {
+                try? execute("ROLLBACK;")
+                throw error
+            }
+        }
+    }
+
+    func currentSchemaVersion() throws -> Int {
+        let sql = "SELECT COALESCE(MAX(version), 0) FROM schema_migrations;"
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw DatabaseError.executeFailed("Unable to read schema version")
+        }
+        return Int(sqlite3_column_int(statement, 0))
+    }
+
+    func migrationHistory() throws -> [MigrationRecord] {
+        let statement = try prepare("SELECT version, id, applied_at FROM schema_migrations ORDER BY version ASC;")
+        defer { sqlite3_finalize(statement) }
+
+        var result: [MigrationRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let version = Int(sqlite3_column_int(statement, 0))
+            let id = String(cString: sqlite3_column_text(statement, 1))
+            let appliedAt = sqlite3_column_double(statement, 2)
+            result.append(MigrationRecord(version: version, id: id, appliedAt: appliedAt))
+        }
+        return result
+    }
+
+    private func applyBaseSchemaMigration() throws {
         try execute("""
         CREATE TABLE IF NOT EXISTS companies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -433,6 +487,89 @@ final class SQLiteDatabase {
             equipment_percent,
             waste_percent,
             margin_percent,
+            moms_percent
+        ) VALUES (1, 0.02, 0.03, 0.04, 0.12, 0.25);
+        """)
+    }
+
+    private func applyLegacyUpgradeBridgeMigration() throws {
+        try addColumnIfMissing(table: "projects", column: "workflow_status", definition: "TEXT NOT NULL DEFAULT 'draft'")
+        try addColumnIfMissing(table: "projects", column: "pricing_mode", definition: "TEXT NOT NULL DEFAULT 'fixed_price'")
+        try addColumnIfMissing(table: "projects", column: "is_draft", definition: "INTEGER NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "projects", column: "lifecycle_status", definition: "TEXT NOT NULL DEFAULT 'active'")
+        try addColumnIfMissing(table: "projects", column: "archived_at", definition: "REAL")
+
+        try addColumnIfMissing(table: "properties", column: "object_type", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "properties", column: "notes", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "properties", column: "photo_path", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "properties", column: "total_area", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "properties", column: "access_level", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "properties", column: "internal_comment", definition: "TEXT NOT NULL DEFAULT ''")
+
+        try addColumnIfMissing(table: "rooms", column: "room_type", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "rooms", column: "length", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "rooms", column: "width", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "rooms", column: "ceiling_area", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "rooms", column: "wall_area_auto", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "rooms", column: "wall_area_manual_adjustment", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "rooms", column: "surface_condition", definition: "TEXT NOT NULL DEFAULT 'standard'")
+        try addColumnIfMissing(table: "rooms", column: "notes", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "rooms", column: "photo_path", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "rooms", column: "room_template_id", definition: "INTEGER")
+
+        try addColumnIfMissing(table: "work_catalog", column: "category_id", definition: "INTEGER")
+        try addColumnIfMissing(table: "work_catalog", column: "subcategory_id", definition: "INTEGER")
+        try addColumnIfMissing(table: "work_catalog", column: "description", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "work_catalog", column: "is_active", definition: "INTEGER NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "include_standard_offer", definition: "INTEGER NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "rot_eligible", definition: "INTEGER NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "applicability", definition: "TEXT NOT NULL DEFAULT 'b2c,b2b'")
+        try addColumnIfMissing(table: "work_catalog", column: "base_purchase_price", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "work_catalog", column: "hourly_price", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "work_catalog", column: "slow_speed", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "work_catalog", column: "medium_speed", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "work_catalog", column: "fast_speed", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "work_catalog", column: "complexity_coefficient", definition: "REAL NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "height_coefficient", definition: "REAL NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "condition_coefficient", definition: "REAL NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "urgency_coefficient", definition: "REAL NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "accessibility_coefficient", definition: "REAL NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "work_catalog", column: "additional_labor_hours", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "work_catalog", column: "additional_material_usage", definition: "REAL NOT NULL DEFAULT 0")
+
+        try addColumnIfMissing(table: "material_catalog", column: "category_id", definition: "INTEGER")
+        try addColumnIfMissing(table: "material_catalog", column: "purchase_price", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "material_catalog", column: "markup_percent", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "material_catalog", column: "supplier_id", definition: "INTEGER")
+        try addColumnIfMissing(table: "material_catalog", column: "sku", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "material_catalog", column: "usage_per_work_unit", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "material_catalog", column: "package_size", definition: "REAL NOT NULL DEFAULT 1")
+        try addColumnIfMissing(table: "material_catalog", column: "stock", definition: "REAL NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "material_catalog", column: "comment", definition: "TEXT NOT NULL DEFAULT ''")
+        try addColumnIfMissing(table: "material_catalog", column: "is_active", definition: "INTEGER NOT NULL DEFAULT 1")
+
+        try addColumnIfMissing(table: "calculation_rules", column: "min_speed_rate", definition: "REAL NOT NULL DEFAULT 0.01")
+        try addColumnIfMissing(table: "calculation_rules", column: "min_work_medium_speed", definition: "REAL NOT NULL DEFAULT 0.1")
+        try addColumnIfMissing(table: "calculation_rules", column: "min_work_base_rate_per_unit_hour", definition: "REAL NOT NULL DEFAULT 0.01")
+        try addColumnIfMissing(table: "calculation_rules", column: "min_speed_days_divider", definition: "REAL NOT NULL DEFAULT 0.1")
+        try addColumnIfMissing(table: "calculation_rules", column: "min_material_usage_per_work_unit", definition: "REAL NOT NULL DEFAULT 0.2")
+        try addColumnIfMissing(table: "calculation_rules", column: "min_material_quantity", definition: "REAL NOT NULL DEFAULT 0.01")
+
+        try addColumnIfMissing(table: "business_documents", column: "reminder_status", definition: "TEXT NOT NULL DEFAULT 'none'")
+        try addColumnIfMissing(table: "business_documents", column: "internal_flag", definition: "TEXT NOT NULL DEFAULT ''")
+
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_business_documents_number_unique ON business_documents(number) WHERE number <> '';")
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_document_series_type_unique ON document_series(document_type);")
+        try execute("CREATE INDEX IF NOT EXISTS idx_payment_allocations_document ON payment_allocations(document_id);")
+        try execute("CREATE INDEX IF NOT EXISTS idx_projects_updated_lookup ON projects(id, created_at);")
+
+        try execute("""
+        INSERT OR IGNORE INTO calculation_rules (
+            id,
+            transport_percent,
+            equipment_percent,
+            waste_percent,
+            margin_percent,
             moms_percent,
             min_speed_rate,
             min_work_medium_speed,
@@ -442,67 +579,9 @@ final class SQLiteDatabase {
             min_material_quantity
         ) VALUES (1, 0.02, 0.03, 0.04, 0.12, 0.25, 0.01, 0.1, 0.01, 0.1, 0.2, 0.01);
         """)
+    }
 
-        try? execute("ALTER TABLE projects ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'draft';")
-
-        try? execute("ALTER TABLE projects ADD COLUMN pricing_mode TEXT NOT NULL DEFAULT 'fixed_price';")
-        try? execute("ALTER TABLE projects ADD COLUMN is_draft INTEGER NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE properties ADD COLUMN object_type TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE properties ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE properties ADD COLUMN photo_path TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE properties ADD COLUMN total_area REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE properties ADD COLUMN access_level TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE properties ADD COLUMN internal_comment TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE rooms ADD COLUMN room_type TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE rooms ADD COLUMN length REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE rooms ADD COLUMN width REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE rooms ADD COLUMN ceiling_area REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE rooms ADD COLUMN wall_area_auto REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE rooms ADD COLUMN wall_area_manual_adjustment REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE rooms ADD COLUMN surface_condition TEXT NOT NULL DEFAULT 'standard';")
-        try? execute("ALTER TABLE rooms ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE rooms ADD COLUMN photo_path TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE rooms ADD COLUMN room_template_id INTEGER;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN category_id INTEGER;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN subcategory_id INTEGER;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN description TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN include_standard_offer INTEGER NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN rot_eligible INTEGER NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN applicability TEXT NOT NULL DEFAULT 'b2c,b2b';")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN base_purchase_price REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN hourly_price REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN slow_speed REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN medium_speed REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN fast_speed REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN complexity_coefficient REAL NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN height_coefficient REAL NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN condition_coefficient REAL NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN urgency_coefficient REAL NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN accessibility_coefficient REAL NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN additional_labor_hours REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE work_catalog ADD COLUMN additional_material_usage REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN category_id INTEGER;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN purchase_price REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN markup_percent REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN supplier_id INTEGER;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN sku TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN usage_per_work_unit REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN package_size REAL NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN stock REAL NOT NULL DEFAULT 0;")
-        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_speed_rate REAL NOT NULL DEFAULT 0.01;")
-        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_work_medium_speed REAL NOT NULL DEFAULT 0.1;")
-        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_work_base_rate_per_unit_hour REAL NOT NULL DEFAULT 0.01;")
-        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_speed_days_divider REAL NOT NULL DEFAULT 0.1;")
-        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_material_usage_per_work_unit REAL NOT NULL DEFAULT 0.2;")
-        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_material_quantity REAL NOT NULL DEFAULT 0.01;")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN comment TEXT NOT NULL DEFAULT '';")
-        try? execute("ALTER TABLE material_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
-        try? execute("ALTER TABLE projects ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active';")
-        try? execute("ALTER TABLE projects ADD COLUMN archived_at REAL;")
-        try? execute("ALTER TABLE business_documents ADD COLUMN reminder_status TEXT NOT NULL DEFAULT 'none';")
-        try? execute("ALTER TABLE business_documents ADD COLUMN internal_flag TEXT NOT NULL DEFAULT '';")
-
+    private func applyStage5OpsTailTablesMigration() throws {
         try execute("""
         CREATE TABLE IF NOT EXISTS supplier_contacts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -585,12 +664,78 @@ final class SQLiteDatabase {
             created_at REAL NOT NULL
         );
         """)
-
-        try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_business_documents_number_unique ON business_documents(number) WHERE number <> '';")
-        try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_document_series_type_unique ON document_series(document_type);")
-        try execute("CREATE INDEX IF NOT EXISTS idx_payment_allocations_document ON payment_allocations(document_id);")
-        try execute("CREATE INDEX IF NOT EXISTS idx_projects_updated_lookup ON projects(id, created_at);")
     }
+
+    private func addColumnIfMissing(table: String, column: String, definition: String) throws {
+        guard try tableExists(table) else { return }
+        guard !(try columnExists(table: table, column: column)) else { return }
+        try execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition);")
+    }
+
+    private func tableExists(_ table: String) throws -> Bool {
+        let statement = try prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1;")
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_text(statement, 1, table, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+
+    private func columnExists(table: String, column: String) throws -> Bool {
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let statement = try prepare("PRAGMA table_info('\(escapedTable)');")
+        defer { sqlite3_finalize(statement) }
+
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let namePtr = sqlite3_column_text(statement, 1) else { continue }
+            if String(cString: namePtr) == column {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func ensureMigrationHistoryTable() throws {
+        try execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            id TEXT NOT NULL UNIQUE,
+            applied_at REAL NOT NULL
+        );
+        """)
+    }
+
+    private func fetchAppliedMigrationVersions() throws -> Set<Int> {
+        let statement = try prepare("SELECT version FROM schema_migrations;")
+        defer { sqlite3_finalize(statement) }
+
+        var versions: Set<Int> = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            versions.insert(Int(sqlite3_column_int(statement, 0)))
+        }
+        return versions
+    }
+
+    private func recordMigration(version: Int, id: String) throws {
+        try withStatement("INSERT INTO schema_migrations(version, id, applied_at) VALUES (?, ?, ?);") { statement in
+            sqlite3_bind_int(statement, 1, Int32(version))
+            sqlite3_bind_text(statement, 2, id, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_double(statement, 3, Date().timeIntervalSince1970)
+            if sqlite3_step(statement) != SQLITE_DONE {
+                throw DatabaseError.executeFailed(String(cString: sqlite3_errmsg(db)))
+            }
+        }
+    }
+
+    private static let orderedMigrations: [MigrationStep] = [
+        MigrationStep(version: 1, id: "001_base_schema") { database in
+            try database.applyBaseSchemaMigration()
+        },
+        MigrationStep(version: 2, id: "002_legacy_upgrade_bridge") { database in
+            try database.applyLegacyUpgradeBridgeMigration()
+        },
+        MigrationStep(version: 3, id: "003_stage5_ops_tail_tables") { database in
+            try database.applyStage5OpsTailTablesMigration()
+        }
+    ]
 
     func copyDatabase(to destination: URL) throws {
         try FileManager.default.copyItem(at: dbPath, to: destination)

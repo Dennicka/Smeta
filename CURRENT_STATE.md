@@ -27,6 +27,7 @@
 - Добавлен отдельный runtime evidence pack `EVIDENCE/D011_CLIENT_CSV_IMPORT_UPSERT.md` + verification script `Scripts/verify_client_csv_import_d011.swift` с воспроизводимыми сценариями create/update/skip/invalid.
 - Для D-012 полностью закрыт остаток money-impacting literals: пороги `0.01/0.1/0.2` вынесены из `EstimateCalculator` в persisted `calculation_rules` (`min_speed_rate/min_work_medium_speed/min_work_base_rate_per_unit_hour/min_speed_days_divider/min_material_usage_per_work_unit/min_material_quantity`), а Stage2 VAT больше не использует hardcoded fallback `0.25`, а берётся из persisted `tax_profiles`.
 - Добавлен evidence pack `EVIDENCE/D012_DEFECT_FIX_8B.md` + обновлённые scripts `Scripts/verify_calculation_rules_d012.swift` и `Scripts/verify_document_draft_builder.swift`: в runtime подтверждено влияние каждого rule-поля на релевантный результат и отсутствие hidden VAT fallback в расчётном контуре draft builder.
+- Для D-013 внедрён и доведён до schema-parity явный versioned migration flow в `SQLiteDatabase`: `schema_migrations` (source-of-truth), ordered runner (`001_base_schema`, `002_legacy_upgrade_bridge`, `003_stage5_ops_tail_tables`), deterministic legacy upgrade через `addColumnIfMissing(...)`; отдельно подтверждён полный expected schema checklist (tables + critical indexes) для fresh и legacy путей, включая Stage5/ops tail (`export_logs`, `project_notes`, `purchase_lists`, `purchase_list_items`, `supplier_contacts`, `supplier_price_history`, `material_price_profiles`, `project_lifecycle_history`, `project_tags`) в `EVIDENCE/D013B_SCHEMA_PARITY.md`.
 
 ## Repository-claimed / documented (внутренние заявления репозитория, не независимое подтверждение)
 - В `ACCEPTANCE_CHECKLIST.md` заявлено 43 PASS / 15 FAIL.
@@ -38,7 +39,6 @@
 - Любой macOS-only runtime: запуск `SmetaApp`, AppKit dialogs, Preview/Print, `.app`/`.dmg` packaging, clean install/restart lifecycle.
 - D-010 partial export pipeline сам по себе не закрывает generation contour; D-008 закрыт только после отдельного доказательства (`EVIDENCE/D008_GENERATION_CONTOUR.md`), а не через экспортный контур.
 - Полный macOS runtime e2e для фактического PDF export (NSSavePanel/AppKit file flow) по Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
-- Надёжность migration/update flow на предсказуемой схеме, а не на opportunistic ALTER TABLE.
 - Чистота архивного/релизного состояния (без build/output noise) как часть release readiness.
 
 ## Важная оговорка по acceptance PASS
