@@ -1,30 +1,24 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-Defect Fix 3c — добить D-009 до `RESOLVED`: получить реальный runtime evidence для repository-level `finalizeDocumentWithSnapshot(...)` в окружении, где доступен модуль `SQLite3`.
+Defect Fix 4 — начать D-010: довести единый PDF/document export pipeline для Avtal / Faktura / Kreditfaktura / ÄTA / Påminnelse до полного runtime e2e evidence.
 
 ## Scope
-- Запустить `Scripts/verify_finalize_document_with_snapshot.swift` в валидном окружении (macOS или Linux с рабочим `SQLite3` module map).
-- Зафиксировать полный evidence pack (команды, raw output, exit code) и подтвердить:
-  - final number в persisted snapshot,
-  - finalized status в persisted snapshot,
-  - rollback при ошибке snapshotBuilder.
-- Подтвердить, что активный runtime path не использует удалённый legacy finalize API.
-- После успешного runtime evidence перевести D-009 из `PARTIAL` в `RESOLVED` и обновить memory files.
+- Пройтись по текущим export paths в `SmetaApp` и устранить разрывы wiring между типами документов и финальным PDF generation.
+- Обеспечить единый, предсказуемый путь формирования выходного документа для всех типов из D-010.
+- Подготовить и выполнить verification сценарии по каждому типу документа с фиксацией runtime evidence.
 
 ## Out of scope
-- D-010 export pipeline.
-- Packaging/macOS runtime релизные задачи.
-- Изменение налоговой математики (D-012).
-- Import/update flow (D-011).
+- Packaging/signing/release задачи macOS (`D-001..D-003`).
+- Migration framework (`D-013`).
+- CSV upsert redesign (`D-011`).
 
 ## Acceptance criteria
-1. `Scripts/verify_finalize_document_with_snapshot.swift` выполнен успешно в релевантной среде.
-2. Есть явный PASS по final number/finalized status/rollback checks.
-3. Есть grep/evidence, что legacy finalize path отсутствует в runtime usage.
-4. D-009 можно честно перевести в `RESOLVED`.
+1. Для каждого типа (Avtal / Faktura / Kreditfaktura / ÄTA / Påminnelse) подтверждён рабочий export pipeline end-to-end.
+2. Есть runtime evidence (команды, raw output, exit code; где релевантно — экспортированные PDF/артефакты).
+3. Статус D-010 можно обновить из `OPEN` минимум до `PARTIAL` (или `RESOLVED`, если закрыто полностью).
 
 ## Evidence requirements
 - Exact commands + full raw outputs + exit codes.
 - Обновлённые `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md`.
-- Обновлённый `EVIDENCE/D009_REPOSITORY_FINALIZATION.md` с итоговым вердиктом.
+- Отдельный evidence-файл под D-010 с трассировкой критерий → доказательство.
