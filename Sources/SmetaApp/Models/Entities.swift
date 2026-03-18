@@ -343,6 +343,93 @@ struct DocumentSnapshot: PersistableEntity { var id: Int64; var documentId: Int6
 struct Payment: PersistableEntity { var id: Int64; var amount: Double; var paidAt: Date; var method: String; var reference: String }
 struct PaymentAllocation: PersistableEntity { var id: Int64; var paymentId: Int64; var documentId: Int64; var amount: Double }
 
+struct ImmutableDocumentSnapshot: Codable {
+    var schemaVersion: Int
+    var snapshotCreatedAt: Date
+    var document: DocumentMetaSnapshot
+    var company: CompanyDisplaySnapshot
+    var client: ClientDisplaySnapshot
+    var project: ProjectSnapshotContext
+    var financials: DocumentFinancialSnapshot
+    var lines: [DocumentLineSnapshot]
+    var references: DocumentReferenceSnapshot
+    var notes: String
+}
+
+struct DocumentMetaSnapshot: Codable {
+    var documentId: Int64
+    var templateId: Int64?
+    var type: String
+    var number: String
+    var title: String
+    var statusAtSnapshotTime: String
+    var issueDate: Date
+    var dueDate: Date?
+    var currency: String
+}
+
+struct CompanyDisplaySnapshot: Codable {
+    var name: String
+    var orgNumber: String
+    var email: String
+    var phone: String
+}
+
+struct ClientDisplaySnapshot: Codable {
+    var name: String
+    var email: String
+    var phone: String
+    var address: String
+}
+
+struct ProjectSnapshotContext: Codable {
+    var projectId: Int64
+    var projectName: String
+    var propertyObjectName: String?
+    var objectAddress: String?
+}
+
+struct DocumentFinancialSnapshot: Codable {
+    var customerType: String
+    var taxMode: String
+    var subtotalLabor: Double
+    var subtotalMaterial: Double
+    var subtotalOther: Double
+    var vatRate: Double
+    var vatAmount: Double
+    var rotEligibleLabor: Double
+    var rotReduction: Double
+    var totalAmount: Double
+    var paidAmount: Double
+    var balanceDue: Double
+}
+
+struct DocumentLineSnapshot: Codable {
+    var lineType: String
+    var description: String
+    var quantity: Double
+    var unit: String
+    var unitPrice: Double
+    var vatRate: Double
+    var isRotEligible: Bool
+    var total: Double
+}
+
+struct DocumentReferenceSnapshot: Codable {
+    var relatedDocumentId: Int64?
+    var relatedDocumentNumber: String?
+    var sourceEstimateId: Int64?
+    var sourceProjectId: Int64?
+    var sourceProjectName: String?
+}
+
+struct LegacyDocumentSnapshot: Codable {
+    var title: String
+    var total: Double
+    var vat: Double
+    var rotReduction: Double
+}
+
 struct SupplierContact: PersistableEntity {
     var id: Int64
     var supplierId: Int64

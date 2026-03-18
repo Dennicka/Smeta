@@ -79,25 +79,67 @@ extension AppRepository {
         return id
     }
 
-    func finalizeDocument(documentId: Int64, templateId: Int64?, snapshotJSON: String) throws {
+    func finalizeDocumentWithSnapshot(
+        documentId: Int64,
+        templateId: Int64?,
+        snapshotBuilder: (BusinessDocument, [BusinessDocumentLine]) throws -> String
+    ) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK")
+            }
+        }
+
+        let assignedNumber = try nextDocumentNumber(for: documentId)
+        try db.withStatement("UPDATE business_documents SET status='finalized', number=? WHERE id=? AND status='draft'") { s in
+            bind2(s, 1, assignedNumber)
+            sqlite3_bind_int64(s, 2, documentId)
+            try step2(s)
+        }
+
+        guard let finalizedDocument = try businessDocument(documentId: documentId),
+              finalizedDocument.status == DocumentStatus.finalized.rawValue,
+              !finalizedDocument.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              finalizedDocument.number == assignedNumber
+        else {
+            throw DatabaseError.executeFailed("Не удалось подтвердить final state документа перед snapshot")
+        }
+
+        let finalizedLines = try businessDocumentLines(documentId: documentId)
+        let snapshotJSON = try snapshotBuilder(finalizedDocument, finalizedLines)
         guard !snapshotJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DatabaseError.executeFailed("Пустой snapshot документа")
         }
 
-        let number = try nextDocumentNumber(for: documentId)
-        try db.withStatement("UPDATE business_documents SET status='finalized', number=? WHERE id=? AND status='draft'") { s in
-            bind2(s, 1, number); sqlite3_bind_int64(s, 2, documentId); try step2(s)
-        }
         try db.withStatement("INSERT INTO document_snapshots (document_id,template_id,snapshot_json,created_at) VALUES (?,?,?,?)") { s in
             sqlite3_bind_int64(s, 1, documentId)
             if let templateId { sqlite3_bind_int64(s, 2, templateId) } else { sqlite3_bind_null(s, 2) }
-            bind2(s, 3, snapshotJSON); sqlite3_bind_double(s, 4, Date().timeIntervalSince1970); try step2(s)
+            bind2(s, 3, snapshotJSON)
+            sqlite3_bind_double(s, 4, Date().timeIntervalSince1970)
+            try step2(s)
         }
+
+        try db.execute("COMMIT")
+        committed = true
     }
 
     func businessDocuments() throws -> [BusinessDocument] {
         try fetch2("SELECT id,project_id,type,status,number,title,issue_date,due_date,customer_type,tax_mode,currency,subtotal_labor,subtotal_material,subtotal_other,vat_rate,vat_amount,rot_eligible_labor,rot_reduction,total_amount,paid_amount,balance_due,related_document_id,notes FROM business_documents ORDER BY id DESC") { s in
             BusinessDocument(id: sqlite3_column_int64(s, 0), projectId: sqlite3_column_int64(s, 1), type: text2(s, 2), status: text2(s, 3), number: text2(s, 4), title: text2(s, 5), issueDate: Date(timeIntervalSince1970: sqlite3_column_double(s, 6)), dueDate: sqlite3_column_type(s, 7) == SQLITE_NULL ? nil : Date(timeIntervalSince1970: sqlite3_column_double(s, 7)), customerType: text2(s, 8), taxMode: text2(s, 9), currency: text2(s, 10), subtotalLabor: sqlite3_column_double(s, 11), subtotalMaterial: sqlite3_column_double(s, 12), subtotalOther: sqlite3_column_double(s, 13), vatRate: sqlite3_column_double(s, 14), vatAmount: sqlite3_column_double(s, 15), rotEligibleLabor: sqlite3_column_double(s, 16), rotReduction: sqlite3_column_double(s, 17), totalAmount: sqlite3_column_double(s, 18), paidAmount: sqlite3_column_double(s, 19), balanceDue: sqlite3_column_double(s, 20), relatedDocumentId: sqlite3_column_type(s, 21) == SQLITE_NULL ? nil : sqlite3_column_int64(s, 21), notes: text2(s, 22))
+        }
+    }
+
+    func businessDocument(documentId: Int64) throws -> BusinessDocument? {
+        try fetchWithBind2("SELECT id,project_id,type,status,number,title,issue_date,due_date,customer_type,tax_mode,currency,subtotal_labor,subtotal_material,subtotal_other,vat_rate,vat_amount,rot_eligible_labor,rot_reduction,total_amount,paid_amount,balance_due,related_document_id,notes FROM business_documents WHERE id=? LIMIT 1", bindValue: documentId) { s in
+            BusinessDocument(id: sqlite3_column_int64(s, 0), projectId: sqlite3_column_int64(s, 1), type: text2(s, 2), status: text2(s, 3), number: text2(s, 4), title: text2(s, 5), issueDate: Date(timeIntervalSince1970: sqlite3_column_double(s, 6)), dueDate: sqlite3_column_type(s, 7) == SQLITE_NULL ? nil : Date(timeIntervalSince1970: sqlite3_column_double(s, 7)), customerType: text2(s, 8), taxMode: text2(s, 9), currency: text2(s, 10), subtotalLabor: sqlite3_column_double(s, 11), subtotalMaterial: sqlite3_column_double(s, 12), subtotalOther: sqlite3_column_double(s, 13), vatRate: sqlite3_column_double(s, 14), vatAmount: sqlite3_column_double(s, 15), rotEligibleLabor: sqlite3_column_double(s, 16), rotReduction: sqlite3_column_double(s, 17), totalAmount: sqlite3_column_double(s, 18), paidAmount: sqlite3_column_double(s, 19), balanceDue: sqlite3_column_double(s, 20), relatedDocumentId: sqlite3_column_type(s, 21) == SQLITE_NULL ? nil : sqlite3_column_int64(s, 21), notes: text2(s, 22))
+        }.first
+    }
+
+    func businessDocumentLines(documentId: Int64) throws -> [BusinessDocumentLine] {
+        try fetchWithBind2("SELECT id,document_id,line_type,description,quantity,unit,unit_price,vat_rate,is_rot_eligible,total FROM business_document_lines WHERE document_id=? ORDER BY id", bindValue: documentId) { s in
+            BusinessDocumentLine(id: sqlite3_column_int64(s, 0), documentId: sqlite3_column_int64(s, 1), lineType: text2(s, 2), description: text2(s, 3), quantity: sqlite3_column_double(s, 4), unit: text2(s, 5), unitPrice: sqlite3_column_double(s, 6), vatRate: sqlite3_column_double(s, 7), isRotEligible: sqlite3_column_int(s, 8) == 1, total: sqlite3_column_double(s, 9))
         }
     }
 

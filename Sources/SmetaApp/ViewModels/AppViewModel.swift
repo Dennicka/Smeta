@@ -53,6 +53,7 @@ final class AppViewModel: ObservableObject {
     private let backupService: BackupService
     private let stage5Service = Stage5Service()
     private let documentDraftBuilder = DocumentDraftBuilder()
+    private let documentSnapshotBuilder = DocumentSnapshotBuilder()
 
     init(repository: AppRepository, backupService: BackupService) {
         self.repository = repository
@@ -354,13 +355,52 @@ final class AppViewModel: ObservableObject {
     func finalizeDocument(_ doc: BusinessDocument) {
         guard !doc.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { errorMessage = "Нельзя финализировать документ без заголовка"; return }
         do {
-            let json = """{"title":"\(doc.title)","total":\(doc.totalAmount),"vat":\(doc.vatAmount),"rotReduction":\(doc.rotReduction)}"""
-            try repository.finalizeDocument(documentId: doc.id, templateId: templates.first?.id, snapshotJSON: json)
+            let templateId = templates.first?.id
+            let sourceEstimateId = try repository.estimates(projectId: doc.projectId).first?.id
+            try repository.finalizeDocumentWithSnapshot(documentId: doc.id, templateId: templateId) { finalizedDoc, finalizedLines in
+                let relatedDocumentNumber: String? = if let relatedId = finalizedDoc.relatedDocumentId {
+                    try repository.businessDocument(documentId: relatedId)?.number
+                } else {
+                    nil
+                }
+                let project = projectForSnapshot(projectId: finalizedDoc.projectId)
+                let context = DocumentSnapshotBuildContext(
+                    company: companiesSnapshotValue(),
+                    client: clients.first(where: { $0.id == project?.clientId }),
+                    project: project,
+                    property: propertyForSnapshot(project: project),
+                    sourceEstimateId: sourceEstimateId,
+                    relatedDocumentNumber: relatedDocumentNumber
+                )
+                let snapshot = documentSnapshotBuilder.buildImmutableSnapshot(
+                    document: finalizedDoc,
+                    lines: finalizedLines,
+                    context: context,
+                    templateId: templateId
+                )
+                return try documentSnapshotBuilder.serialize(snapshot: snapshot)
+            }
             infoMessage = "Документ финализирован"
             try reloadAll()
         } catch {
             errorMessage = "Не удалось финализировать документ: \(error.localizedDescription)"
         }
+    }
+
+    private func companiesSnapshotValue() -> Company? {
+        if let company = try? repository.companies().first {
+            return company
+        }
+        return nil
+    }
+
+    private func projectForSnapshot(projectId: Int64) -> Project? {
+        projects.first(where: { $0.id == projectId }) ?? (try? repository.projects().first(where: { $0.id == projectId }))
+    }
+
+    private func propertyForSnapshot(project: Project?) -> PropertyObject? {
+        guard let project else { return nil }
+        return properties.first(where: { $0.id == project.propertyId }) ?? (try? repository.properties().first(where: { $0.id == project.propertyId }))
     }
 
     func addPayment(documentId: Int64, amount: Double, method: String, reference: String) {
