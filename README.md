@@ -92,3 +92,20 @@ swift run SmetaApp
 - Улучшение типизации `EstimateLine` и привязки к каталогам.
 - Валидация и защита от дубликатов/некорректных вводов.
 - Печать через `NSPrintOperation` и расширенный layout PDF.
+
+
+## Stage 4 stabilization highlights
+- Усилена надёжность SQLite-соединения (`foreign_keys`, `WAL`, `busy_timeout`).
+- Backup/restore усилены: timestamped backup, подтверждение restore, валидация структуры backup.
+- Включены базовые валидации для критичных сущностей (клиенты/проекты/помещения/документы/оплаты).
+- Добавлен UX-фидбек ошибок и успешных действий в основном интерфейсе.
+- Поиск в верхней строке фильтрует список документов.
+- В `Settings` явно показана папка данных и доступна кнопка открытия этой папки.
+
+Дополнительные release-документы:
+- `INSTALL.md`
+- `USER_GUIDE.md`
+- `BACKUP_RESTORE.md`
+- `RELEASE_NOTES.md`
+- `KNOWN_LIMITATIONS.md`
+- `DEMO_WALKTHROUGH.md`

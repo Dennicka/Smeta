@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @EnvironmentObject private var vm: AppViewModel
@@ -20,9 +21,21 @@ struct SettingsView: View {
                     Text("\(s.name) / коэф. \(s.coefficient, specifier: "%.2f") / \(s.daysDivider, specifier: "%.2f") ч/д")
                 }
             }
-            HStack {
-                Button("Backup базы") { vm.backupDatabase() }
-                Button("Restore базы") { vm.restoreDatabase() }
+
+            GroupBox("Данные и backup") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Папка данных:")
+                    Text(vm.dataLocationPath())
+                        .font(.callout)
+                        .textSelection(.enabled)
+                    HStack {
+                        Button("Открыть папку") {
+                            NSWorkspace.shared.open(URL(fileURLWithPath: vm.dataLocationPath()))
+                        }
+                        Button("Backup базы") { vm.backupDatabase() }
+                        Button("Restore базы") { vm.restoreDatabase() }
+                    }
+                }
             }
             Spacer()
         }

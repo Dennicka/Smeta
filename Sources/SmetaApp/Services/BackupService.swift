@@ -8,8 +8,8 @@ final class BackupService {
 
     func backupViaDialog() throws {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "smeta-backup.sqlite"
-        panel.allowedFileTypes = ["sqlite","db"]
+        panel.nameFieldStringValue = backupFileName()
+        panel.allowedFileTypes = ["sqlite", "db"]
         if panel.runModal() == .OK, let url = panel.url {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
@@ -20,10 +20,31 @@ final class BackupService {
 
     func restoreViaDialog() throws {
         let panel = NSOpenPanel()
-        panel.allowedFileTypes = ["sqlite","db"]
+        panel.allowedFileTypes = ["sqlite", "db"]
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
+            guard confirmRestore(for: url) else { return }
             try db.restoreDatabase(from: url)
         }
+    }
+
+    func dataLocation() -> URL {
+        db.dataFolder()
+    }
+
+    private func backupFileName() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "smeta-backup-\(formatter.string(from: Date())).sqlite"
+    }
+
+    private func confirmRestore(for url: URL) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Restore database?"
+        alert.informativeText = "Текущая рабочая база будет заменена файлом \(url.lastPathComponent). Рекомендуется сделать backup перед восстановлением."
+        alert.addButton(withTitle: "Restore")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 }

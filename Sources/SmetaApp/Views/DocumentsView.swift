@@ -17,7 +17,7 @@ struct DocumentsView: View {
             HStack {
                 Button("Сгенерировать Offert PDF") { vm.saveEstimateAndGenerateDocument() }
             }
-            List(vm.businessDocuments) { doc in
+            List(vm.filteredBusinessDocuments) { doc in
                 HStack {
                     VStack(alignment: .leading) {
                         Text("\(doc.type.uppercased()) \(doc.number.isEmpty ? "DRAFT" : doc.number)").bold()

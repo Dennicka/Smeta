@@ -38,6 +38,22 @@ struct RootView: View {
                     .textFieldStyle(.roundedBorder)
                     .padding()
 
+                if let info = vm.infoMessage {
+                    Text(info)
+                        .font(.callout)
+                        .foregroundStyle(.green)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                }
+
+                if let error = vm.errorMessage {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                }
+
                 switch selected ?? .dashboard {
                 case .dashboard: DashboardView()
                 case .clients: ClientsView()

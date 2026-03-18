@@ -80,8 +80,12 @@ extension AppRepository {
     }
 
     func finalizeDocument(documentId: Int64, templateId: Int64?, snapshotJSON: String) throws {
+        guard !snapshotJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DatabaseError.executeFailed("Пустой snapshot документа")
+        }
+
         let number = try nextDocumentNumber(for: documentId)
-        try db.withStatement("UPDATE business_documents SET status='finalized', number=? WHERE id=?") { s in
+        try db.withStatement("UPDATE business_documents SET status='finalized', number=? WHERE id=? AND status='draft'") { s in
             bind2(s, 1, number); sqlite3_bind_int64(s, 2, documentId); try step2(s)
         }
         try db.withStatement("INSERT INTO document_snapshots (document_id,template_id,snapshot_json,created_at) VALUES (?,?,?,?)") { s in
@@ -104,6 +108,18 @@ extension AppRepository {
     }
 
     func registerPayment(documentId: Int64, amount: Double, method: String, reference: String) throws {
+        guard amount > 0 else { throw DatabaseError.executeFailed("Сумма оплаты должна быть больше нуля") }
+
+        var balanceDue: Double = -1
+        try db.withStatement("SELECT balance_due FROM business_documents WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, documentId)
+            if sqlite3_step(s) == SQLITE_ROW {
+                balanceDue = sqlite3_column_double(s, 0)
+            }
+        }
+        guard balanceDue >= 0 else { throw DatabaseError.executeFailed("Счёт не найден") }
+        guard amount <= balanceDue else { throw DatabaseError.executeFailed("Оплата превышает остаток по счёту") }
+
         try db.withStatement("INSERT INTO payments (amount,paid_at,method,reference) VALUES (?,?,?,?)") { s in
             sqlite3_bind_double(s, 1, amount); sqlite3_bind_double(s, 2, Date().timeIntervalSince1970); bind2(s, 3, method); bind2(s, 4, reference); try step2(s)
         }
