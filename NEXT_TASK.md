@@ -1,10 +1,10 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-007j — провести macOS runtime UX verification для D-007a/D-007c/D-007e/D-007g/D-007g2/D-007g3 (user-facing errors + cancel semantics + orphan-file + safe-overwrite + hard-recovery + post-commit warning semantics).
+D-007j — провести macOS runtime UX verification для D-007a/D-007c/D-007e/D-007g/D-007g2/D-007g3/D-007g4 (user-facing errors + cancel semantics + orphan-file + safe-overwrite + hard-recovery + post-commit warning semantics + evidence-honesty consistency).
 
 ## Почему именно это next
-- D-007a/D-007c/D-007e/D-007g/D-007g2/D-007g3 закрыли code-level silent paths, Offert cancel semantics, orphan-file/half-success semantics, safe-overwrite semantics, hard-recovery semantics и post-commit false-failure semantics, но без macOS UI runtime это остаётся repository-level claim.
+- D-007a/D-007c/D-007e/D-007g/D-007g2/D-007g3/D-007g4 закрыли code-level silent paths, Offert cancel semantics, orphan-file/half-success semantics, safe-overwrite semantics, hard-recovery semantics, post-commit false-failure semantics и verifier/evidence honesty alignment, но без macOS UI runtime это остаётся repository-level claim.
 - По вашей директиве не уходим в очередной цикл D-010 в Linux-среде без AppKit runtime доступа.
 
 ## Scope
@@ -25,7 +25,7 @@ D-007j — провести macOS runtime UX verification для D-007a/D-007c/D
 
 ## Preconditions
 - Нужен реальный macOS runtime доступ (в текущем Linux контейнере это `blocked_env`).
-- D-007a/D-007c/D-007e/D-007g/D-007g2/D-007g3 code changes уже внесены, evidence в `EVIDENCE/D007A_ERROR_HANDLING.md`, `EVIDENCE/D007C_OFFERT_CANCEL_SEMANTICS.md`, `EVIDENCE/D007E_ATOMIC_PDF_PERSISTENCE.md`, `EVIDENCE/D007G_SAFE_OVERWRITE_SEMANTICS.md`, `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md`, `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md`.
+- D-007a/D-007c/D-007e/D-007g/D-007g2/D-007g3/D-007g4 code changes уже внесены, evidence в `EVIDENCE/D007A_ERROR_HANDLING.md`, `EVIDENCE/D007C_OFFERT_CANCEL_SEMANTICS.md`, `EVIDENCE/D007E_ATOMIC_PDF_PERSISTENCE.md`, `EVIDENCE/D007G_SAFE_OVERWRITE_SEMANTICS.md`, `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md`, `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md`.
 
 ## Out of scope
 - Новые фичи.

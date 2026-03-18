@@ -3,6 +3,11 @@
 Дата: 2026-03-18 (UTC)
 Среда: Linux container (без macOS AppKit runtime)
 
+## Historical status note (2026-03-18)
+- Этот документ фиксирует **исторический переход** от destructive overwrite к backup/restore.
+- Он **не должен читаться** как свежий runtime-proof всей текущей цепочки после orchestrator-рефакторинга.
+- Актуальный throwing recovery + post-commit semantics подтверждаются отдельными evidence-паками: `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md` и `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md`.
+
 ## Update note (D-007g2 sync)
 - D-007g safe-overwrite contract сохранён, но после D-007g2 recovery path больше не best-effort: он реализован через throwing `PDFFileStateOrchestrator` и отдельно подтверждён scenario-based пакетом `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md`.
 - Этот файл фиксирует именно переход от destructive overwrite к backup/restore, а D-007g2 добавляет жёсткий error signaling при неполном restore.
