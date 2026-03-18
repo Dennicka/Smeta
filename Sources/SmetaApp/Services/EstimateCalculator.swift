@@ -51,11 +51,11 @@ final class EstimateCalculator {
 
             for work in selectedWorks[room.id, default: []].filter(\.isActive) {
                 let quantity: Double = work.unit.contains("м²") ? wallArea : room.area
-                let speedRate = max(0.01, speed.coefficient * max(work.mediumSpeed > 0 ? work.mediumSpeed : 1, 0.1))
-                let norm = quantity * max(work.baseRatePerUnitHour, 0.01)
+                let speedRate = max(rules.minSpeedRate, speed.coefficient * max(work.mediumSpeed > 0 ? work.mediumSpeed : 1, rules.minWorkMediumSpeed))
+                let norm = quantity * max(work.baseRatePerUnitHour, rules.minWorkBaseRatePerUnitHour)
                 let coeff = overhead * work.complexityCoefficient * work.heightCoefficient * work.conditionCoefficient * work.urgencyCoefficient * work.accessibilityCoefficient
                 let hours = (norm / speedRate) * coeff + work.additionalLaborHours
-                let days = hours / max(speed.daysDivider, 0.1)
+                let days = hours / max(speed.daysDivider, rules.minSpeedDaysDivider)
                 let labor = pricingMode == .hourly ? hours * max(work.hourlyPrice, laborRate) : hours * laborRate
                 let total = labor
                 rows.append(CalculationRow(roomName: room.name,
@@ -73,7 +73,7 @@ final class EstimateCalculator {
             }
 
             for material in selectedMaterials[room.id, default: []].filter(\.isActive) {
-                let quantity = max(0.01, room.area * max(material.usagePerWorkUnit, 0.2))
+                let quantity = max(rules.minMaterialQuantity, room.area * max(material.usagePerWorkUnit, rules.minMaterialUsagePerWorkUnit))
                 let materialCost = quantity * (material.basePrice + material.basePrice * material.markupPercent / 100)
                 rows.append(CalculationRow(roomName: room.name,
                                            itemName: material.name,

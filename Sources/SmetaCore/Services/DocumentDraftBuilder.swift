@@ -10,6 +10,7 @@ struct DocumentBuildContext {
     var materialItemsById: [Int64: MaterialCatalogItem]
     var businessDocuments: [BusinessDocument] = []
     var businessDocumentLinesByDocumentId: [Int64: [BusinessDocumentLine]] = [:]
+    var taxProfiles: [TaxProfile] = []
 }
 
 struct DocumentDraftPayload {
@@ -52,7 +53,10 @@ struct DocumentDraftBuilder {
         guard context.client != nil else { return .incomplete("Kunduppgifter saknas") }
         guard context.estimate != nil else { return .incomplete("Kalkyl saknas för projektet") }
 
-        let mappedLines = mapEstimateLines(context: context, vatRate: 0.25)
+        guard let taxProfile = resolveTaxProfile(in: context, customerType: .b2c, taxMode: .normal) else {
+            return .incomplete("Skatteprofil saknas för Offert (B2C/normal)")
+        }
+        let mappedLines = mapEstimateLines(context: context, vatRate: taxProfile.vatRate)
         guard !mappedLines.isEmpty else {
             return .incomplete("Offert kan inte skapas: kalkylen innehåller inga rader")
         }
@@ -65,8 +69,8 @@ struct DocumentDraftBuilder {
             taxMode: .normal,
             notes: "Källa: projekt/kalkyl",
             lines: mappedLines,
-            vatRate: 0.25,
-            rotPercent: useRot ? 0.3 : 0,
+            vatRate: taxProfile.vatRate,
+            rotPercent: useRot ? taxProfile.rotPercent : 0,
             now: now,
             calendar: calendar
         )
@@ -84,8 +88,12 @@ struct DocumentDraftBuilder {
         guard context.client != nil else { return .incomplete("Kunduppgifter saknas") }
         guard context.estimate != nil else { return .incomplete("Faktura kan inte skapas utan kalkyl") }
 
-        let vatRate = reverseCharge ? 0 : 0.25
-        let mappedLines = mapEstimateLines(context: context, vatRate: vatRate)
+        let customerType: CustomerType = reverseCharge ? .b2b : .b2c
+        let taxMode: TaxMode = reverseCharge ? .reverseCharge : .normal
+        guard let taxProfile = resolveTaxProfile(in: context, customerType: customerType, taxMode: taxMode) else {
+            return .incomplete("Skatteprofil saknas för Faktura (\(customerType.rawValue)/\(taxMode.rawValue))")
+        }
+        let mappedLines = mapEstimateLines(context: context, vatRate: taxProfile.vatRate)
         guard !mappedLines.isEmpty else {
             return .incomplete("Faktura kan inte skapas: kalkylen innehåller inga rader")
         }
@@ -94,11 +102,11 @@ struct DocumentDraftBuilder {
             type: .faktura,
             project: project,
             title: title,
-            customerType: reverseCharge ? .b2b : .b2c,
-            taxMode: reverseCharge ? .reverseCharge : .normal,
+            customerType: customerType,
+            taxMode: taxMode,
             notes: "Källa: projekt/kalkyl",
             lines: mappedLines,
-            vatRate: vatRate,
+            vatRate: taxProfile.vatRate,
             rotPercent: 0,
             now: now,
             calendar: calendar
@@ -201,7 +209,10 @@ struct DocumentDraftBuilder {
         guard context.client != nil else { return .incomplete("Kunduppgifter saknas") }
         guard context.estimate != nil else { return .incomplete("ÄTA kan inte skapas utan kalkyl") }
 
-        let mappedLines = mapEstimateLines(context: context, vatRate: 0.25)
+        guard let taxProfile = resolveTaxProfile(in: context, customerType: .b2c, taxMode: .normal) else {
+            return .incomplete("Skatteprofil saknas för ÄTA (B2C/normal)")
+        }
+        let mappedLines = mapEstimateLines(context: context, vatRate: taxProfile.vatRate)
         guard !mappedLines.isEmpty else {
             return .incomplete("ÄTA kan inte skapas: kalkylen innehåller inga rader")
         }
@@ -215,7 +226,7 @@ struct DocumentDraftBuilder {
             taxMode: .normal,
             notes: "Källa: projekt/kalkyl (ÄTA-underlag)",
             lines: mappedLines,
-            vatRate: 0.25,
+            vatRate: taxProfile.vatRate,
             rotPercent: 0,
             now: now,
             calendar: calendar
@@ -384,6 +395,18 @@ struct DocumentDraftBuilder {
                 isRotEligible: $0.isRotEligible,
                 total: $0.total
             )
+        }
+    }
+
+    private func resolveTaxProfile(
+        in context: DocumentBuildContext,
+        customerType: CustomerType,
+        taxMode: TaxMode
+    ) -> TaxProfile? {
+        context.taxProfiles.first { profile in
+            profile.active &&
+            profile.customerType == customerType.rawValue &&
+            profile.taxMode == taxMode.rawValue
         }
     }
 }

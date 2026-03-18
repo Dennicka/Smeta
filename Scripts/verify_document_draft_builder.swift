@@ -16,7 +16,7 @@ func expectContains(_ text: String, _ fragment: String, _ message: String) {
     }
 }
 
-func makeContext(estimateLines: [EstimateLine]) -> DocumentBuildContext {
+func makeContext(estimateLines: [EstimateLine], b2cVatRate: Double = 0.25) -> DocumentBuildContext {
     let work = WorkCatalogItem(
         id: 100,
         name: "Paint walls",
@@ -43,7 +43,12 @@ func makeContext(estimateLines: [EstimateLine]) -> DocumentBuildContext {
         estimate: Estimate(id: 4, projectId: 3, speedProfileId: 1, laborRatePerHour: 650, overheadCoefficient: 1.1, createdAt: Date()),
         estimateLines: estimateLines,
         workItemsById: [100: work],
-        materialItemsById: [200: material]
+        materialItemsById: [200: material],
+        taxProfiles: [
+            TaxProfile(id: 1, name: "B2C Moms", customerType: CustomerType.b2c.rawValue, taxMode: TaxMode.normal.rawValue, vatRate: b2cVatRate, rotPercent: 0.3, active: true),
+            TaxProfile(id: 2, name: "B2B Moms", customerType: CustomerType.b2b.rawValue, taxMode: TaxMode.normal.rawValue, vatRate: 0.25, rotPercent: 0, active: true),
+            TaxProfile(id: 3, name: "B2B Reverse Charge", customerType: CustomerType.b2b.rawValue, taxMode: TaxMode.reverseCharge.rawValue, vatRate: 0, rotPercent: 0, active: true)
+        ]
     )
 }
 
@@ -60,6 +65,7 @@ struct DocumentDraftBuilderVerification {
         ]
 
         let readyContext = makeContext(estimateLines: populatedLines)
+        let changedVatContext = makeContext(estimateLines: populatedLines, b2cVatRate: 0.12)
 
         // Scenario A: Offert draft is created from estimate lines
         switch builder.buildOffert(context: readyContext, title: "Offert kök", useRot: true, now: fixedNow, calendar: calendar) {
@@ -106,6 +112,17 @@ struct DocumentDraftBuilderVerification {
             exit(1)
         case .incomplete(let reason):
             expectContains(reason, "inga rader", "Faktura incomplete reason must be honest")
+        }
+
+        switch (builder.buildOffert(context: readyContext, title: "Offert VAT 25", useRot: false, now: fixedNow, calendar: calendar),
+                builder.buildOffert(context: changedVatContext, title: "Offert VAT 12", useRot: false, now: fixedNow, calendar: calendar)) {
+        case (.success(let baseline), .success(let changed)):
+            expect(abs(baseline.vatRate - 0.25) < 0.001, "Baseline VAT profile should be used")
+            expect(abs(changed.vatRate - 0.12) < 0.001, "Changed VAT profile should be used")
+            expect(abs(changed.vatAmount - baseline.vatAmount) > 0.001, "Changing VAT profile must change VAT amount")
+        default:
+            fputs("FAIL: VAT profile comparison expected success payloads\n", stderr)
+            exit(1)
         }
 
         print("VERIFY_DOCUMENT_DRAFT_BUILDER: PASS")
