@@ -11,13 +11,11 @@ struct OfferEditorView: View {
             Text("Offer editor").font(.largeTitle).bold()
             TextField("Titel", text: $title)
             Toggle("ROT tillämplig", isOn: $useRot)
+            Text("Документ будет собран только из реальных данных проекта/сметы.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
             Button("Skapa Offert-utkast") {
-                guard let project = vm.selectedProject else { return }
-                let lines = [
-                    BusinessDocumentLine(id: 0, documentId: 0, lineType: "labor", description: "Målning väggar", quantity: 10, unit: "h", unitPrice: 650, vatRate: 0.25, isRotEligible: true, total: 6500),
-                    BusinessDocumentLine(id: 0, documentId: 0, lineType: "material", description: "Färg", quantity: 12, unit: "l", unitPrice: 90, vatRate: 0.25, isRotEligible: false, total: 1080)
-                ]
-                vm.createDraftDocument(type: .offert, projectId: project.id, title: title, customerType: .b2c, taxMode: .normal, lines: lines, rotPercent: useRot ? 0.3 : 0)
+                vm.createOffertDraftFromSelectedProject(title: title, useRot: useRot)
             }
         }
     }
@@ -42,10 +40,11 @@ struct InvoiceEditorView: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text("Invoice editor").font(.largeTitle).bold()
+            Text("Faktura строится из project/estimate state без demo-строк.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
             Button("Создать Faktura draft") {
-                guard let project = vm.selectedProject else { return }
-                let lines = [BusinessDocumentLine(id: 0, documentId: 0, lineType: "labor", description: "Arbete", quantity: 20, unit: "h", unitPrice: 700, vatRate: reverseCharge ? 0 : 0.25, isRotEligible: false, total: 14_000)]
-                vm.createDraftDocument(type: .faktura, projectId: project.id, title: "Faktura \(project.name)", customerType: reverseCharge ? .b2b : .b2c, taxMode: reverseCharge ? .reverseCharge : .normal, lines: lines)
+                vm.createFakturaDraftFromSelectedProject(reverseCharge: reverseCharge)
             }
             Toggle("B2B omvänd betalningsskyldighet", isOn: $reverseCharge)
         }

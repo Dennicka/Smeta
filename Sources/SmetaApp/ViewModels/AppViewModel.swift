@@ -52,6 +52,7 @@ final class AppViewModel: ObservableObject {
     private let pdfService = PDFDocumentService()
     private let backupService: BackupService
     private let stage5Service = Stage5Service()
+    private let documentDraftBuilder = DocumentDraftBuilder()
 
     init(repository: AppRepository, backupService: BackupService) {
         self.repository = repository
@@ -256,6 +257,98 @@ final class AppViewModel: ObservableObject {
         } catch {
             errorMessage = "Не удалось создать документ: \(error.localizedDescription)"
         }
+    }
+
+    func createOffertDraftFromSelectedProject(title: String, useRot: Bool) {
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект для создания Offert"
+            return
+        }
+        do {
+            let context = try loadDocumentBuildContext(projectId: project.id)
+            switch documentDraftBuilder.buildOffert(context: context, title: title, useRot: useRot) {
+            case .success(let payload):
+                try persistDraftDocument(payload: payload)
+                infoMessage = "Черновик Offert создан из данных проекта"
+                try reloadAll()
+            case .incomplete(let reason):
+                errorMessage = reason
+            }
+        } catch {
+            errorMessage = "Не удалось создать Offert: \(error.localizedDescription)"
+        }
+    }
+
+    func createFakturaDraftFromSelectedProject(reverseCharge: Bool) {
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект для создания Faktura"
+            return
+        }
+        do {
+            let context = try loadDocumentBuildContext(projectId: project.id)
+            let title = "Faktura \(project.name)"
+            switch documentDraftBuilder.buildFaktura(context: context, title: title, reverseCharge: reverseCharge) {
+            case .success(let payload):
+                try persistDraftDocument(payload: payload)
+                infoMessage = "Черновик Faktura создан из данных проекта"
+                try reloadAll()
+            case .incomplete(let reason):
+                errorMessage = reason
+            }
+        } catch {
+            errorMessage = "Не удалось создать Faktura: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadDocumentBuildContext(projectId: Int64) throws -> DocumentBuildContext {
+        let company = try repository.companies().first
+        let project = projects.first(where: { $0.id == projectId }) ?? try repository.projects().first(where: { $0.id == projectId })
+        let client = project.flatMap { project in
+            clients.first(where: { $0.id == project.clientId }) ?? (try? repository.clients().first(where: { $0.id == project.clientId }))
+        }
+        let estimate = try repository.estimates(projectId: projectId).first
+        let estimateLines = estimate.map { try repository.estimateLines(estimateId: $0.id) } ?? []
+        let worksById = Dictionary(uniqueKeysWithValues: works.map { ($0.id, $0) })
+        let materialsById = Dictionary(uniqueKeysWithValues: materials.map { ($0.id, $0) })
+        return DocumentBuildContext(
+            company: company,
+            client: client,
+            project: project,
+            estimate: estimate,
+            estimateLines: estimateLines,
+            workItemsById: worksById,
+            materialItemsById: materialsById
+        )
+    }
+
+    private func persistDraftDocument(payload: DocumentDraftPayload) throws {
+        let doc = BusinessDocument(
+            id: 0,
+            projectId: payload.projectId,
+            type: payload.type.rawValue,
+            status: DocumentStatus.draft.rawValue,
+            number: "",
+            title: payload.title,
+            issueDate: payload.issueDate,
+            dueDate: payload.dueDate,
+            customerType: payload.customerType.rawValue,
+            taxMode: payload.taxMode.rawValue,
+            currency: payload.currency,
+            subtotalLabor: payload.subtotalLabor,
+            subtotalMaterial: payload.subtotalMaterial,
+            subtotalOther: payload.subtotalOther,
+            vatRate: payload.vatRate,
+            vatAmount: payload.vatAmount,
+            rotEligibleLabor: payload.rotEligibleLabor,
+            rotReduction: payload.rotReduction,
+            totalAmount: payload.totalAmount,
+            paidAmount: 0,
+            balanceDue: payload.totalAmount,
+            relatedDocumentId: nil,
+            notes: payload.notes
+        )
+        _ = try repository.createBusinessDocument(doc, lines: payload.lines)
+        try repository.updateProjectStatus(projectId: payload.projectId, status: .calculation)
     }
 
     func finalizeDocument(_ doc: BusinessDocument) {
