@@ -98,6 +98,41 @@ final class AppRepository {
         }
     }
 
+    func calculationRules() throws -> CalculationRules {
+        if let row = try fetch("SELECT id,transport_percent,equipment_percent,waste_percent,margin_percent,moms_percent FROM calculation_rules WHERE id=1 LIMIT 1", { s in
+            CalculationRules(id: sqlite3_column_int64(s, 0),
+                             transportPercent: sqlite3_column_double(s, 1),
+                             equipmentPercent: sqlite3_column_double(s, 2),
+                             wastePercent: sqlite3_column_double(s, 3),
+                             marginPercent: sqlite3_column_double(s, 4),
+                             momsPercent: sqlite3_column_double(s, 5))
+        }).first {
+            return row
+        }
+        try upsertCalculationRules(.default)
+        return .default
+    }
+
+    func upsertCalculationRules(_ rules: CalculationRules) throws {
+        try db.withStatement("""
+        INSERT INTO calculation_rules (id,transport_percent,equipment_percent,waste_percent,margin_percent,moms_percent)
+        VALUES (1,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET
+            transport_percent=excluded.transport_percent,
+            equipment_percent=excluded.equipment_percent,
+            waste_percent=excluded.waste_percent,
+            margin_percent=excluded.margin_percent,
+            moms_percent=excluded.moms_percent
+        """) { s in
+            sqlite3_bind_double(s, 1, rules.transportPercent)
+            sqlite3_bind_double(s, 2, rules.equipmentPercent)
+            sqlite3_bind_double(s, 3, rules.wastePercent)
+            sqlite3_bind_double(s, 4, rules.marginPercent)
+            sqlite3_bind_double(s, 5, rules.momsPercent)
+            try step(s)
+        }
+    }
+
     func projects() throws -> [Project] { try fetch("SELECT id,client_id,property_id,name,speed_profile_id,created_at,pricing_mode,is_draft FROM projects ORDER BY id DESC") { s in
         Project(id: sqlite3_column_int64(s,0), clientId: sqlite3_column_int64(s,1), propertyId: sqlite3_column_int64(s,2), name: text(s,3), speedProfileId: sqlite3_column_int64(s,4), createdAt: Date(timeIntervalSince1970: sqlite3_column_double(s,5)), pricingMode: text(s,6), isDraft: sqlite3_column_int(s,7) == 1)
     }}
