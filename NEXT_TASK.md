@@ -1,26 +1,28 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-Исправить project memory files так, чтобы они честно отражали результаты независимого аудита и реальные product defects; после этого подготовить следующий defect-fix task по highest-priority product defect.
+После выполненного verification pass по Offert/Faktura закрыть остаток D-008: убрать hardcoded/demo document lines и перевести на repository-backed mapping layer документы Avtal, Kreditfaktura, ÄTA и Påminnelse.
 
 ## Scope
-- Обновить `AGENT_CONTEXT.md`, `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `ACCEPTANCE_RULES.md`, `NEXT_TASK.md` так, чтобы независимые audit findings были явно отражены.
-- Явно развести independently confirmed vs repository-claimed/documented vs unconfirmed.
-- Зафиксировать product defects из независимого аудита в backlog с приоритетом, статусом и expected fix.
-- Сформулировать (документально) следующий defect-fix task-кандидат по highest-priority product defect **без начала реализации этого дефекта в коде**.
+- Найти demo/hardcoded line generation для `ContractEditorView`, `ExtraWorkView`, `RemindersView` и связанных helper/service path.
+- Перевести эти контуры на реальный document/project/estimate state через отдельный builder/mapper (без сборки строк во View).
+- При недостатке данных показывать только honest incomplete/empty state, без fake fallback.
+- Добавить/расширить автотесты mapping layer для новых типов документов.
+- Обновить `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md` по фактическому coverage.
 
 ## Out of scope
-- Любые новые продуктовые фичи.
-- Любые изменения UI/Views/Services/Repositories.
-- Любой рефактор/миграция/исправление runtime-дефектов в коде приложения.
+- Полный rewrite document subsystem.
+- macOS runtime/packaging задачи.
+- Новый продуктовый функционал.
 
 ## Acceptance criteria
-1. Все memory files синхронизированы с независимыми audit findings и не завышают подтверждённую готовность.
-2. В `CURRENT_STATE.md` нет смешения между independently confirmed и repository-claimed.
-3. В `DEFECT_BACKLOG.md` отражены D-008…D-015 с полями priority/status/expected fix.
-4. `NEXT_TASK.md` остаётся в рамках correction of memory layer и не расширяется до продуктовой разработки.
+1. Avtal/Kreditfaktura/ÄTA/Påminnelse больше не используют hardcoded/demo lines.
+2. Все перечисленные типы строятся через repository-backed mapping layer вне View.
+3. При пустых/неполных данных нет fake content, есть явный incomplete-state.
+4. Есть тесты на mapping/totals для покрытых типов.
+5. D-008 может быть переведён в `RESOLVED` только при наличии code evidence по всем типам документов.
 
 ## Evidence requirements
-- Полный diff только memory files.
-- Список формулировок, перемещённых из confirmed в repository-claimed/unconfirmed.
-- Явное указание, какие audit findings добавлены и где они зафиксированы.
+- Diff с изменениями только по релевантным document flow файлам + memory files.
+- Список команд проверок и их результаты.
+- Явный список документов, покрытых фиксом, и документов вне scope.
