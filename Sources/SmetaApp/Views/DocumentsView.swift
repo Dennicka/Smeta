@@ -17,10 +17,16 @@ struct DocumentsView: View {
             HStack {
                 Button("Сгенерировать Offert PDF") { vm.saveEstimateAndGenerateDocument() }
             }
-            List(vm.generatedDocuments) { doc in
-                VStack(alignment: .leading) {
-                    Text(doc.title).bold()
-                    Text(doc.path).font(.caption)
+            List(vm.businessDocuments) { doc in
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("\(doc.type.uppercased()) \(doc.number.isEmpty ? "DRAFT" : doc.number)").bold()
+                        Text("\(doc.status) / Total \(doc.totalAmount, specifier: "%.2f") / Баланс \(doc.balanceDue, specifier: "%.2f")").font(.caption)
+                    }
+                    Spacer()
+                    if doc.status == DocumentStatus.draft.rawValue {
+                        Button("Finalize") { vm.finalizeDocument(doc) }
+                    }
                 }
             }
         }

@@ -9,7 +9,16 @@ enum Screen: String, CaseIterable, Identifiable {
     case works = "Работы"
     case materials = "Материалы"
     case calculation = "Расчёт"
-    case documents = "Документы"
+    case documents = "Documents"
+    case offerEditor = "Offer editor"
+    case contractEditor = "Contract editor"
+    case invoiceEditor = "Invoice editor"
+    case payments = "Payments"
+    case extraWork = "Extra work / ÄTA"
+    case reminders = "Reminders"
+    case templates = "Document templates"
+    case numbering = "Document numbering"
+    case tax = "Tax settings"
     case settings = "Настройки"
     var id: String { rawValue }
 }
@@ -39,6 +48,15 @@ struct RootView: View {
                 case .materials: MaterialsView()
                 case .calculation: CalculationView()
                 case .documents: DocumentsView()
+                case .offerEditor: OfferEditorView()
+                case .contractEditor: ContractEditorView()
+                case .invoiceEditor: InvoiceEditorView()
+                case .payments: PaymentsView()
+                case .extraWork: ExtraWorkView()
+                case .reminders: RemindersView()
+                case .templates: DocumentTemplatesView()
+                case .numbering: DocumentNumberingView()
+                case .tax: TaxSettingsView()
                 case .settings: SettingsView()
                 }
             }

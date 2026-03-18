@@ -12,6 +12,9 @@ final class AppViewModel: ObservableObject {
     @Published var speedProfiles: [SpeedProfile] = []
     @Published var templates: [DocumentTemplate] = []
     @Published var generatedDocuments: [GeneratedDocument] = []
+    @Published var businessDocuments: [BusinessDocument] = []
+    @Published var documentSeries: [DocumentSeries] = []
+    @Published var taxProfiles: [TaxProfile] = []
     @Published var selectedProject: Project?
     @Published var searchText: String = ""
 
@@ -36,6 +39,7 @@ final class AppViewModel: ObservableObject {
     func bootstrap() {
         do {
             try repository.seedIfNeeded()
+            try repository.seedStage2Defaults()
             try reloadAll()
             selectedProject = projects.first
             selectedSpeedId = speedProfiles.first?.id ?? 0
@@ -54,6 +58,9 @@ final class AppViewModel: ObservableObject {
         speedProfiles = try repository.speedProfiles()
         templates = try repository.templates()
         generatedDocuments = try repository.generatedDocuments()
+        businessDocuments = try repository.businessDocuments()
+        documentSeries = try repository.documentSeries()
+        taxProfiles = try repository.taxProfiles()
     }
 
     func addClient(name: String, email: String, phone: String, address: String) {
@@ -126,6 +133,38 @@ final class AppViewModel: ObservableObject {
                 try reloadAll()
             }
         } catch { print(error) }
+    }
+
+
+
+    func createDraftDocument(type: DocumentType, projectId: Int64, title: String, customerType: CustomerType, taxMode: TaxMode, lines: [BusinessDocumentLine], rotPercent: Double = 0) {
+        do {
+            let labor = lines.filter { $0.lineType == "labor" }.reduce(0) { $0 + $1.total }
+            let material = lines.filter { $0.lineType == "material" }.reduce(0) { $0 + $1.total }
+            let other = lines.filter { $0.lineType == "other" }.reduce(0) { $0 + $1.total }
+            let vatRate = taxMode == .reverseCharge ? 0 : 0.25
+            let rotEligible = lines.filter { $0.isRotEligible }.reduce(0) { $0 + $1.total }
+            let rotReduction = rotEligible * rotPercent
+            let subtotal = labor + material + other
+            let vatAmount = subtotal * vatRate
+            let total = subtotal + vatAmount - rotReduction
+            let doc = BusinessDocument(id: 0, projectId: projectId, type: type.rawValue, status: DocumentStatus.draft.rawValue, number: "", title: title, issueDate: Date(), dueDate: Calendar.current.date(byAdding: .day, value: 30, to: Date()), customerType: customerType.rawValue, taxMode: taxMode.rawValue, currency: "SEK", subtotalLabor: labor, subtotalMaterial: material, subtotalOther: other, vatRate: vatRate, vatAmount: vatAmount, rotEligibleLabor: rotEligible, rotReduction: rotReduction, totalAmount: total, paidAmount: 0, balanceDue: total, relatedDocumentId: nil, notes: "")
+            _ = try repository.createBusinessDocument(doc, lines: lines)
+            try repository.updateProjectStatus(projectId: projectId, status: .calculation)
+            try reloadAll()
+        } catch { print(error) }
+    }
+
+    func finalizeDocument(_ doc: BusinessDocument) {
+        do {
+            let json = """{"title":"\(doc.title)","total":\(doc.totalAmount),"vat":\(doc.vatAmount),"rotReduction":\(doc.rotReduction)}"""
+            try repository.finalizeDocument(documentId: doc.id, templateId: templates.first?.id, snapshotJSON: json)
+            try reloadAll()
+        } catch { print(error) }
+    }
+
+    func addPayment(documentId: Int64, amount: Double, method: String, reference: String) {
+        do { try repository.registerPayment(documentId: documentId, amount: amount, method: method, reference: reference); try reloadAll() } catch { print(error) }
     }
 
     func backupDatabase() { do { try backupService.backupViaDialog() } catch { print(error) } }

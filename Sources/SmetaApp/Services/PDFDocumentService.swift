@@ -31,4 +31,15 @@ final class PDFDocumentService {
         let pdfData = textView.dataWithPDF(inside: textView.bounds)
         try pdfData.write(to: saveURL)
     }
+
+    func generateBusinessDocumentPDF(title: String, body: String, saveURL: URL) throws {
+        let attributed = NSAttributedString(string: "\(title)
+
+\(body)", attributes: [.font: NSFont.systemFont(ofSize: 13)])
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 595, height: 842))
+        textView.textStorage?.setAttributedString(attributed)
+        let pdfData = textView.dataWithPDF(inside: textView.bounds)
+        try pdfData.write(to: saveURL)
+    }
+
 }
