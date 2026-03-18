@@ -1,5 +1,5 @@
 import XCTest
-@testable import SmetaApp
+@testable import SmetaCore
 
 final class Stage5ServiceTests: XCTestCase {
     let service = Stage5Service()

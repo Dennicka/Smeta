@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import AppKit
 
@@ -43,3 +44,4 @@ struct SettingsView: View {
         }
     }
 }
+#endif

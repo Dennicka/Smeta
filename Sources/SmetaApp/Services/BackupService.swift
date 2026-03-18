@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import Foundation
 import AppKit
 
@@ -48,3 +49,4 @@ final class BackupService {
         return alert.runModal() == .alertFirstButtonReturn
     }
 }
+#endif

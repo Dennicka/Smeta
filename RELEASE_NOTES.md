@@ -22,3 +22,9 @@
 
 ## Stage 5 (operational layer)
 - Added import/export operational UI, suppliers/purchases storage, repricing/profitability helpers, receivables buckets, lifecycle archive/restore, notes/tags scaffolding, data portability manifest exports, and admin reset tools.
+
+## Stage 6 (final verification/freeze pass)
+- Added explicit Stage 6 verification artifacts: `ACCEPTANCE_CHECKLIST.md` and `FINAL_VERIFICATION_REPORT.md`.
+- Added `SmetaCore` target for isolated core verification in non-macOS environments.
+- Added reproducible core verification script `Scripts/stage6_core_verification.swift`.
+- Hardened UI error handling in `AppViewModel`: removed silent `print(error)` paths and replaced with user-facing error messages.
