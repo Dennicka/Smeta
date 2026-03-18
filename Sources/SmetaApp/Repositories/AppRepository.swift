@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 final class AppRepository {
-    private let db: SQLiteDatabase
+    let db: SQLiteDatabase
 
     init(db: SQLiteDatabase) { self.db = db }
 
@@ -31,6 +31,8 @@ final class AppRepository {
         let projectId = try insertProject(Project(id: 0, clientId: c1, propertyId: p1, name: "Ремонт кухни", speedProfileId: slow, createdAt: Date()))
         _ = try insertRoom(Room(id: 0, projectId: projectId, name: "Кухня", area: 14, height: 2.7))
         _ = try insertRoom(Room(id: 0, projectId: projectId, name: "Коридор", area: 8, height: 2.6))
+
+        try seedStage2Defaults()
     }
 
     func companies() throws -> [Company] { try fetch("SELECT id,name,org_number,email,phone FROM companies") { stmt in

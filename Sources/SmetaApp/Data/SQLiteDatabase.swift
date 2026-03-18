@@ -160,7 +160,99 @@ final class SQLiteDatabase {
             FOREIGN KEY(estimate_id) REFERENCES estimates(id),
             FOREIGN KEY(template_id) REFERENCES document_templates(id)
         );
+
+        CREATE TABLE IF NOT EXISTS project_status_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            changed_at REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
+        CREATE TABLE IF NOT EXISTS document_series (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_type TEXT NOT NULL UNIQUE,
+            prefix TEXT NOT NULL,
+            next_number INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS tax_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            customer_type TEXT NOT NULL,
+            tax_mode TEXT NOT NULL,
+            vat_rate REAL NOT NULL,
+            rot_percent REAL NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS business_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            number TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL,
+            issue_date REAL NOT NULL,
+            due_date REAL,
+            customer_type TEXT NOT NULL,
+            tax_mode TEXT NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'SEK',
+            subtotal_labor REAL NOT NULL,
+            subtotal_material REAL NOT NULL,
+            subtotal_other REAL NOT NULL,
+            vat_rate REAL NOT NULL,
+            vat_amount REAL NOT NULL,
+            rot_eligible_labor REAL NOT NULL,
+            rot_reduction REAL NOT NULL,
+            total_amount REAL NOT NULL,
+            paid_amount REAL NOT NULL DEFAULT 0,
+            balance_due REAL NOT NULL,
+            related_document_id INTEGER,
+            notes TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(project_id) REFERENCES projects(id),
+            FOREIGN KEY(related_document_id) REFERENCES business_documents(id)
+        );
+        CREATE TABLE IF NOT EXISTS business_document_lines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL,
+            line_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            unit TEXT NOT NULL,
+            unit_price REAL NOT NULL,
+            vat_rate REAL NOT NULL,
+            is_rot_eligible INTEGER NOT NULL DEFAULT 0,
+            total REAL NOT NULL,
+            FOREIGN KEY(document_id) REFERENCES business_documents(id)
+        );
+        CREATE TABLE IF NOT EXISTS document_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL,
+            template_id INTEGER,
+            snapshot_json TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            FOREIGN KEY(document_id) REFERENCES business_documents(id),
+            FOREIGN KEY(template_id) REFERENCES document_templates(id)
+        );
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            amount REAL NOT NULL,
+            paid_at REAL NOT NULL,
+            method TEXT NOT NULL,
+            reference TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS payment_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payment_id INTEGER NOT NULL,
+            document_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            FOREIGN KEY(payment_id) REFERENCES payments(id),
+            FOREIGN KEY(document_id) REFERENCES business_documents(id)
+        );
+
         """)
+
+        try? execute("ALTER TABLE projects ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'draft';")
     }
 
     func copyDatabase(to destination: URL) throws {
