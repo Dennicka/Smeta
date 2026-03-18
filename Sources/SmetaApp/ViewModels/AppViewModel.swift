@@ -480,12 +480,22 @@ final class AppViewModel: ObservableObject {
 
     private func loadDocumentBuildContext(projectId: Int64) throws -> DocumentBuildContext {
         let company = try repository.companies().first
-        let project = projects.first(where: { $0.id == projectId }) ?? try repository.projects().first(where: { $0.id == projectId })
+        let project: Project?
+        if let cachedProject = projects.first(where: { $0.id == projectId }) {
+            project = cachedProject
+        } else {
+            project = try repository.projects().first(where: { $0.id == projectId })
+        }
         let client = project.flatMap { project in
             clients.first(where: { $0.id == project.clientId }) ?? (try? repository.clients().first(where: { $0.id == project.clientId }))
         }
         let estimate = try repository.estimates(projectId: projectId).first
-        let estimateLines = estimate.map { try repository.estimateLines(estimateId: $0.id) } ?? []
+        let estimateLines: [EstimateLine]
+        if let estimate {
+            estimateLines = try repository.estimateLines(estimateId: estimate.id)
+        } else {
+            estimateLines = []
+        }
         let projectDocuments = try repository.businessDocuments().filter { $0.projectId == projectId }
         let projectDocumentLines = try Dictionary(uniqueKeysWithValues: projectDocuments.map { doc in
             (doc.id, try repository.businessDocumentLines(documentId: doc.id))
@@ -542,10 +552,11 @@ final class AppViewModel: ObservableObject {
             let templateId = templates.first?.id
             let sourceEstimateId = try repository.estimates(projectId: doc.projectId).first?.id
             try repository.finalizeDocumentWithSnapshot(documentId: doc.id, templateId: templateId) { finalizedDoc, finalizedLines in
-                let relatedDocumentNumber: String? = if let relatedId = finalizedDoc.relatedDocumentId {
-                    try repository.businessDocument(documentId: relatedId)?.number
+                let relatedDocumentNumber: String?
+                if let relatedId = finalizedDoc.relatedDocumentId {
+                    relatedDocumentNumber = try repository.businessDocument(documentId: relatedId)?.number
                 } else {
-                    nil
+                    relatedDocumentNumber = nil
                 }
                 let project = projectForSnapshot(projectId: finalizedDoc.projectId)
                 let context = DocumentSnapshotBuildContext(
