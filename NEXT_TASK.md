@@ -1,19 +1,19 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-015 — финальный review/sign-off clean-release discipline (после усиления recursive denylist).
+D-004 — стабилизировать Linux test path (`swift test`) без падения на `no such module 'SQLite3'`.
 
 ## Scope
-- Перепроверить D-015 verify-pass на актуальном дереве (`Scripts/verify_clean_release_d015.sh`).
-- Подтвердить, что recursive denylist ловит шум в любой вложенности, а не только в корне.
-- Поддерживать evidence в актуальном состоянии (exact commands, raw outputs, exit codes).
+- Зафиксировать воспроизводимую Linux-команду тестирования, которая стабильно проходит в текущем контейнере.
+- Убрать источник падения `no such module 'SQLite3'` для Linux test path (через корректное ограничение test scope и/или корректную Linux-конфигурацию `SQLite3`).
+- Обновить документацию статуса после фикса: `DEFECT_BACKLOG.md`, `CURRENT_STATE.md`, `NEXT_TASK.md` (+ evidence при необходимости).
 
 ## Out of scope
-- Новые фичи и изменения бизнес-логики.
-- Параллельная работа по D-004/D-005/D-010 и другим backlog-пунктам.
-- macOS runtime задачи (`D-001..D-003`, `D-002` AppKit e2e).
+- Revert/reset/переписывание git-истории.
+- Рефакторинг и изменения бизнес-логики приложения.
+- macOS-only runtime задачи (`D-001..D-003`) и desktop e2e-подтверждения.
 
 ## Acceptance criteria
-1. Verify-команда детерминированно отдаёт `PASS` на чистом состоянии.
-2. Verify-команда детерминированно отдаёт `FAIL` при вложенном release-noise.
-3. `EVIDENCE/D015_CLEAN_RELEASE.md`, `DEFECT_BACKLOG.md`, `CURRENT_STATE.md`, `NEXT_TASK.md` синхронизированы.
+1. В Linux воспроизводится детерминированный `swift test` path без ошибки `no such module 'SQLite3'`.
+2. Зафиксированы точные команды, raw output и итоговый exit code для PASS-сценария.
+3. `NEXT_TASK.md`, `DEFECT_BACKLOG.md`, `CURRENT_STATE.md` остаются синхронизированы по статусам (`D-015 = RESOLVED`, следующая задача = `D-004`).
