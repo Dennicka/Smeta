@@ -1,19 +1,30 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-006 — снять partial-статус финальной Stage 6 готовности (перевести release verdict из «условно готово только для core logic freeze» к подтверждённому состоянию через недостающие runtime evidence).
+D-010 — выполнить настоящий macOS runtime E2E для AppKit PDF export по business documents (Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse) после закрытия D-010a compile-blocker.
 
 ## Scope
-- Сфокусироваться на закрытии `PARTIAL` для D-006 через de-risk по оставшимся high-impact acceptance gap'ам.
-- Подготовить последовательный план по `blocked_env`/macOS-only подтверждениям для путей, которые не могут быть закрыты в Linux.
-- Синхронизировать release-вердикт в `FINAL_VERIFICATION_REPORT.md`, `ACCEPTANCE_CHECKLIST.md`, `CURRENT_STATE.md` после появления новых evidence.
+- Выполнить прогон именно на macOS runtime (не code-audit и не Linux substitute).
+- Для каждого из 5 document types отдельно подтвердить:
+  - открывается export flow;
+  - сохраняется PDF;
+  - файл реально создаётся и не пустой;
+  - нет падения;
+  - path идёт через зафиксированный export pipeline, без fake/demo fallback.
+- Собрать и приложить отдельный evidence pack: exact commands/steps, raw logs, список PDF-файлов, размеры файлов, скриншоты/честное runtime-подтверждение, type-by-type PASS/FAIL.
+
+## Preconditions
+- D-010a (compile-time blocker в `PDFDocumentService.swift`) уже устранён и подтверждён evidence-командой `swiftc -typecheck ...` с `EXIT_CODE:0`.
 
 ## Out of scope
-- Revert/reset/переписывание git-истории.
-- Изменения бизнес-логики, не требуемые для D-006.
-- Повторный аудит уже закрытого D-005 (кроме ссылок на готовое evidence).
+- `.app/.dmg` packaging и notarization.
+- Clean install/restart lifecycle.
+- Новые фичи вне export path.
+- Рефакторинг бизнес-логики, не необходимый для прохождения D-010 acceptance.
 
 ## Acceptance criteria
-1. Для D-006 зафиксирован явный plan-of-record: какие acceptance-пункты переводятся из `PARTIAL`/`blocked_env`, каким evidence и в какой среде.
-2. После выполнения шага есть как минимум один новый проверяемый evidence-блок, уменьшающий объём неопределённости по финальному release verdict.
-3. Документы статуса синхронизированы: `D-005 = RESOLVED`, следующая задача = `D-006`.
+1. Для каждого из 5 типов есть отдельный macOS runtime result.
+2. В evidence присутствуют реальные PDF-файлы и их размеры.
+3. Есть честный type-by-type verdict (`PASS/FAIL`) без сокрытия failure point.
+4. После прогона синхронизированы документы: `DEFECT_BACKLOG.md`, `CURRENT_STATE.md`, `NEXT_TASK.md`.
+5. Если все 5 проходят — `D-010 = RESOLVED`; иначе — `D-010 = PARTIAL` с явной разбивкой по failing subtype/scenario.

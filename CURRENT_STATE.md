@@ -36,6 +36,14 @@
 - Запрещённые сегменты директорий (`.build/build/Build/DerivedData/output/tmp/temp/cache/.cache`) и шумные file-patterns (`*.log/*.tmp/*.temp/*.pid/*.sqlite-wal/*.sqlite-shm/*.db-wal/*.db-shm/.DS_Store`) детектируются в любом вложенном пути.
 - В evidence зафиксированы оба сценария: `FAIL` на искусственном `Scripts/tmp/...` шуме и `PASS` после очистки; raw output + exit codes в `EVIDENCE/D015_CLEAN_RELEASE.md`.
 
+
+## D-010 macOS runtime E2E (обновлено)
+- Подготовлен и обновлён evidence-pack `EVIDENCE/D010_MACOS_RUNTIME_E2E.md` с exact commands/raw outputs/type-by-type verdict для Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
+- В evidence теперь явно разделено: что было кодовым дефектом, а что является environment blocker.
+- D-010a закрыт: compile-time syntax blocker в `Sources/SmetaApp/Services/PDFDocumentService.swift` устранён и подтверждён командой `swiftc -typecheck ...` с `EXIT_CODE:0`.
+- D-010 остаётся `PARTIAL`: для всех 5 document types runtime E2E в Linux всё ещё `FAIL (BLOCKED_ENV)` из-за отсутствия macOS AppKit runtime path (`swift build --product SmetaApp` не запускается в этой среде).
+- Следующий шаг — реальный macOS прогон с созданными PDF-артефактами и размерами файлов.
+
 ## Важная оговорка
 - После D-014 в acceptance/release документах больше не используется optimistic `PASS`, если он не подкреплён runtime evidence.
 - Любой статус готовности теперь должен попадать только в одну явную категорию: `independently confirmed` / `repository-claimed` / `unconfirmed` / `blocked_env`.
