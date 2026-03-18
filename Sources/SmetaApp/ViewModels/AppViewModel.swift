@@ -10,6 +10,9 @@ final class AppViewModel: ObservableObject {
     @Published var works: [WorkCatalogItem] = []
     @Published var materials: [MaterialCatalogItem] = []
     @Published var speedProfiles: [SpeedProfile] = []
+    @Published var surfacesByRoom: [Int64: [Surface]] = [:]
+    @Published var openingsByRoom: [Int64: [Opening]] = [:]
+    @Published var pricingMode: PricingMode = .fixed
     @Published var templates: [DocumentTemplate] = []
     @Published var generatedDocuments: [GeneratedDocument] = []
     @Published var businessDocuments: [BusinessDocument] = []
@@ -53,6 +56,8 @@ final class AppViewModel: ObservableObject {
         properties = try repository.fetchWithClientProperties()
         projects = try repository.projects()
         rooms = try repository.rooms()
+        surfacesByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.surfaces(roomId: $0.id)) })
+        openingsByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.openings(roomId: $0.id)) })
         works = try repository.workItems()
         materials = try repository.materialItems()
         speedProfiles = try repository.speedProfiles()
@@ -79,8 +84,28 @@ final class AppViewModel: ObservableObject {
         } catch { print(error) }
     }
 
-    func addRoom(projectId: Int64, name: String, area: Double, height: Double) {
-        do { _ = try repository.insertRoom(Room(id: 0, projectId: projectId, name: name, area: area, height: height)); try reloadAll() } catch { print(error) }
+    func addRoom(projectId: Int64, name: String, area: Double, height: Double, length: Double = 0, width: Double = 0, manualWallAdjustment: Double = 0, roomType: String = "") {
+        let floorArea = area > 0 ? area : (length > 0 && width > 0 ? length * width : 0)
+        let wallAuto = length > 0 && width > 0 ? (2 * (length + width) * height) : floorArea * 2.8
+        let room = Room(id: 0, projectId: projectId, name: name, area: floorArea, height: height, roomType: roomType, length: length, width: width, ceilingArea: floorArea, wallAreaAuto: wallAuto, wallAreaManualAdjustment: manualWallAdjustment)
+        do {
+            let roomId = try repository.insertRoom(room)
+            try repository.replaceSurfaces(roomId: roomId, surfaces: [
+                Surface(id: 0, roomId: roomId, type: "wall", name: "Стены", area: wallAuto, perimeter: length > 0 && width > 0 ? 2 * (length + width) : 0, isCustom: false, source: "auto", manualAdjustment: manualWallAdjustment),
+                Surface(id: 0, roomId: roomId, type: "ceiling", name: "Потолок", area: floorArea, perimeter: 0, isCustom: false, source: "auto", manualAdjustment: 0),
+                Surface(id: 0, roomId: roomId, type: "floor", name: "Пол", area: floorArea, perimeter: 0, isCustom: false, source: "auto", manualAdjustment: 0),
+                Surface(id: 0, roomId: roomId, type: "plinth", name: "Плинтус", area: 0, perimeter: length > 0 && width > 0 ? 2 * (length + width) : 0, isCustom: false, source: "auto", manualAdjustment: 0)
+            ])
+            try reloadAll()
+        } catch { print(error) }
+    }
+
+    func duplicateRoom(_ room: Room) {
+        addRoom(projectId: room.projectId, name: room.name + " (копия)", area: room.area, height: room.height, length: room.length, width: room.width, manualWallAdjustment: room.wallAreaManualAdjustment, roomType: room.roomType)
+    }
+
+    func addOpening(roomId: Int64, type: String, name: String, width: Double, height: Double, count: Int, subtract: Bool) {
+        do { try repository.addOpening(Opening(id: 0, roomId: roomId, surfaceId: nil, type: type, name: name, width: width, height: height, count: count, subtractFromWallArea: subtract)); try reloadAll() } catch { print(error) }
     }
 
     func addWork(_ item: WorkCatalogItem) { do { _ = try repository.insertWorkItem(item); try reloadAll() } catch { print(error) } }
@@ -96,10 +121,15 @@ final class AppViewModel: ObservableObject {
         guard let project = selectedProject else { return }
         let projectRooms = rooms.filter { $0.projectId == project.id }
         guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first else { return }
+        let openings = Dictionary(uniqueKeysWithValues: projectRooms.map { ($0.id, openingsByRoom[$0.id, default: []]) })
+        let surfaces = Dictionary(uniqueKeysWithValues: projectRooms.map { ($0.id, surfacesByRoom[$0.id, default: []]) })
         calculationResult = calculator.calculate(rooms: projectRooms,
+                                                 surfacesByRoom: surfaces,
+                                                 openingsByRoom: openings,
                                                  selectedWorks: selectedWorksByRoom,
                                                  selectedMaterials: selectedMaterialsByRoom,
                                                  speed: speed,
+                                                 pricingMode: pricingMode,
                                                  laborRate: laborRatePerHour,
                                                  overhead: overheadCoefficient)
     }

@@ -12,6 +12,9 @@ struct CalculationView: View {
                     Picker("Скорость", selection: $vm.selectedSpeedId) {
                         ForEach(vm.speedProfiles) { Text($0.name).tag($0.id) }
                     }
+                    Picker("Режим цены", selection: $vm.pricingMode) {
+                        ForEach(PricingMode.allCases) { Text($0.rawValue).tag($0) }
+                    }.frame(width: 180)
                     TextField("Ставка труда/ч", value: $vm.laborRatePerHour, format: .number)
                     TextField("Коэф.", value: $vm.overheadCoefficient, format: .number)
                     Button("Рассчитать") { vm.calculate() }
@@ -52,8 +55,15 @@ struct CalculationView: View {
                         TableColumn("Труд") { Text(String(format: "%.2f", $0.laborCost)) }
                         TableColumn("Материалы") { Text(String(format: "%.2f", $0.materialCost)) }
                         TableColumn("Итог") { Text(String(format: "%.2f", $0.total)) }
+                        TableColumn("Формула") { Text($0.formula).font(.caption) }
                     }
-                    Text("Итого: \(result.grandTotal, specifier: "%.2f")")
+                    Group {
+                        Text("Труд: \(result.totalLabor, specifier: "%.2f")")
+                        Text("Материалы: \(result.totalMaterials, specifier: "%.2f")")
+                        Text("Transport: \(result.transportCost, specifier: "%.2f") | Equipment: \(result.equipmentCost, specifier: "%.2f") | Waste: \(result.wasteCost, specifier: "%.2f")")
+                        Text("Margin: \(result.margin, specifier: "%.2f") | Moms: \(result.moms, specifier: "%.2f")")
+                        Text("Итого: \(result.grandTotal, specifier: "%.2f")").font(.title3).bold()
+                    }
                 }
             } else {
                 Text("Выберите проект на вкладке 'Проекты'")

@@ -13,6 +13,7 @@ struct CalculationRow: Identifiable {
     let laborCost: Double
     let materialCost: Double
     let total: Double
+    let formula: String
 }
 
 struct CalculationResult {
@@ -21,33 +22,70 @@ struct CalculationResult {
     let totalDays: Double
     let totalLabor: Double
     let totalMaterials: Double
+    let transportCost: Double
+    let equipmentCost: Double
+    let wasteCost: Double
+    let margin: Double
+    let moms: Double
     let grandTotal: Double
 }
 
 final class EstimateCalculator {
     func calculate(rooms: [Room],
+                   surfacesByRoom: [Int64: [Surface]],
+                   openingsByRoom: [Int64: [Opening]],
                    selectedWorks: [Int64: [WorkCatalogItem]],
                    selectedMaterials: [Int64: [MaterialCatalogItem]],
                    speed: SpeedProfile,
+                   pricingMode: PricingMode,
                    laborRate: Double,
                    overhead: Double) -> CalculationResult {
         var rows: [CalculationRow] = []
 
         for room in rooms {
-            for work in selectedWorks[room.id, default: []] {
-                let quantity = room.area
-                let norm = quantity * work.baseRatePerUnitHour
-                let hours = norm * speed.coefficient * overhead
+            let roomSurfaces = surfacesByRoom[room.id, default: []]
+            let roomOpenings = openingsByRoom[room.id, default: []]
+            let openingSubtract = roomOpenings.filter(\.subtractFromWallArea).reduce(0) { $0 + $1.area }
+            let wallArea = max(0, (roomSurfaces.first { $0.type == "wall" }?.effectiveArea ?? room.wallAreaTotal) - openingSubtract)
+
+            for work in selectedWorks[room.id, default: []].filter(\.isActive) {
+                let quantity: Double = work.unit.contains("м²") ? wallArea : room.area
+                let speedRate = max(0.01, speed.coefficient * max(work.mediumSpeed > 0 ? work.mediumSpeed : 1, 0.1))
+                let norm = quantity * max(work.baseRatePerUnitHour, 0.01)
+                let coeff = overhead * work.complexityCoefficient * work.heightCoefficient * work.conditionCoefficient * work.urgencyCoefficient * work.accessibilityCoefficient
+                let hours = (norm / speedRate) * coeff + work.additionalLaborHours
                 let days = hours / max(speed.daysDivider, 0.1)
-                let labor = hours * laborRate
+                let labor = pricingMode == .hourly ? hours * max(work.hourlyPrice, laborRate) : hours * laborRate
                 let total = labor
-                rows.append(CalculationRow(roomName: room.name, itemName: work.name, quantity: quantity, speedCoefficient: speed.coefficient, normHours: norm, coefficient: overhead, hours: hours, days: days, laborCost: labor, materialCost: 0, total: total))
+                rows.append(CalculationRow(roomName: room.name,
+                                           itemName: work.name,
+                                           quantity: quantity,
+                                           speedCoefficient: speedRate,
+                                           normHours: norm,
+                                           coefficient: coeff,
+                                           hours: hours,
+                                           days: days,
+                                           laborCost: labor,
+                                           materialCost: 0,
+                                           total: total,
+                                           formula: "(\(quantity)×\(work.baseRatePerUnitHour))/\(speedRate)×\(coeff)+\(work.additionalLaborHours)"))
             }
 
-            for material in selectedMaterials[room.id, default: []] {
-                let quantity = room.area * 0.2
-                let materialCost = quantity * material.basePrice
-                rows.append(CalculationRow(roomName: room.name, itemName: material.name, quantity: quantity, speedCoefficient: speed.coefficient, normHours: 0, coefficient: overhead, hours: 0, days: 0, laborCost: 0, materialCost: materialCost, total: materialCost))
+            for material in selectedMaterials[room.id, default: []].filter(\.isActive) {
+                let quantity = max(0.01, room.area * max(material.usagePerWorkUnit, 0.2))
+                let materialCost = quantity * (material.basePrice + material.basePrice * material.markupPercent / 100)
+                rows.append(CalculationRow(roomName: room.name,
+                                           itemName: material.name,
+                                           quantity: quantity,
+                                           speedCoefficient: speed.coefficient,
+                                           normHours: 0,
+                                           coefficient: 1,
+                                           hours: 0,
+                                           days: 0,
+                                           laborCost: 0,
+                                           materialCost: materialCost,
+                                           total: materialCost,
+                                           formula: "\(quantity)×\(material.basePrice)"))
             }
         }
 
@@ -55,6 +93,22 @@ final class EstimateCalculator {
         let days = rows.reduce(0) { $0 + $1.days }
         let labor = rows.reduce(0) { $0 + $1.laborCost }
         let materials = rows.reduce(0) { $0 + $1.materialCost }
-        return CalculationResult(rows: rows, totalHours: hours, totalDays: days, totalLabor: labor, totalMaterials: materials, grandTotal: labor + materials)
+        let transport = (labor + materials) * 0.02
+        let equipment = labor * 0.03
+        let waste = materials * 0.04
+        let subtotal = labor + materials + transport + equipment + waste
+        let margin = subtotal * 0.12
+        let moms = (subtotal + margin) * 0.25
+        return CalculationResult(rows: rows,
+                                 totalHours: hours,
+                                 totalDays: days,
+                                 totalLabor: labor,
+                                 totalMaterials: materials,
+                                 transportCost: transport,
+                                 equipmentCost: equipment,
+                                 wasteCost: waste,
+                                 margin: margin,
+                                 moms: moms,
+                                 grandTotal: subtotal + margin + moms)
     }
 }
