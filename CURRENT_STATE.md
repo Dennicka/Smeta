@@ -18,6 +18,11 @@
 - macOS-only сценарии подтверждения (`Preview/Print/PDF AppKit`, `.app/.dmg`, clean install, restart lifecycle, GUI stress) остаются `blocked_env`.
 - Количество `blocked_env` в acceptance-матрице: **12**.
 
+## D-015 clean-release discipline
+- `Scripts/verify_clean_release_d015.sh` теперь делает не только top-level allowlist-check, но и **recursive denylist-check по всей глубине репозитория**.
+- Запрещённые сегменты директорий (`.build/build/Build/DerivedData/output/tmp/temp/cache/.cache`) и шумные file-patterns (`*.log/*.tmp/*.temp/*.pid/*.sqlite-wal/*.sqlite-shm/*.db-wal/*.db-shm/.DS_Store`) детектируются в любом вложенном пути.
+- В evidence зафиксированы оба сценария: `FAIL` на искусственном `Scripts/tmp/...` шуме и `PASS` после очистки; raw output + exit codes в `EVIDENCE/D015_CLEAN_RELEASE.md`.
+
 ## Важная оговорка
 - После D-014 в acceptance/release документах больше не используется optimistic `PASS`, если он не подкреплён runtime evidence.
 - Любой статус готовности теперь должен попадать только в одну явную категорию: `independently confirmed` / `repository-claimed` / `unconfirmed` / `blocked_env`.

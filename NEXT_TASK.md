@@ -1,23 +1,19 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-015 — очистка release/archive состояния от build/output noise перед финализацией релизного пакета.
+D-015 — финальный review/sign-off clean-release discipline (после усиления recursive denylist).
 
 ## Scope
-- Зафиксировать deterministic clean-release checklist (что разрешено в артефактах, что обязательно удаляется).
-- Добавить/обновить verify-команду, которая проверяет чистоту release/archive состояния перед фиксацией.
-- Синхронизировать критерий чистоты в `DEFECT_BACKLOG.md` и релизных заметках.
+- Перепроверить D-015 verify-pass на актуальном дереве (`Scripts/verify_clean_release_d015.sh`).
+- Подтвердить, что recursive denylist ловит шум в любой вложенности, а не только в корне.
+- Поддерживать evidence в актуальном состоянии (exact commands, raw outputs, exit codes).
 
 ## Out of scope
-- Любые новые фичи или изменения бизнес-логики.
-- Попытка закрыть macOS-only runtime задачи (`D-001..D-003`, D-002 AppKit e2e).
-- Повторная ревизия D-014 (уже закрыт и задокументирован).
+- Новые фичи и изменения бизнес-логики.
+- Параллельная работа по D-004/D-005/D-010 и другим backlog-пунктам.
+- macOS runtime задачи (`D-001..D-003`, `D-002` AppKit e2e).
 
 ## Acceptance criteria
-1. Есть явный allowlist/denylist release-артефактов.
-2. Есть воспроизводимая verify-команда с raw output и exit code.
-3. `DEFECT_BACKLOG.md` и связанные release-docs согласованы по новому правилу clean-release.
-
-## Evidence requirements
-- Exact commands + raw outputs + exit codes.
-- Отдельный evidence-файл по D-015 clean-release pass.
+1. Verify-команда детерминированно отдаёт `PASS` на чистом состоянии.
+2. Verify-команда детерминированно отдаёт `FAIL` при вложенном release-noise.
+3. `EVIDENCE/D015_CLEAN_RELEASE.md`, `DEFECT_BACKLOG.md`, `CURRENT_STATE.md`, `NEXT_TASK.md` синхронизированы.
