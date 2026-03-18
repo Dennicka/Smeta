@@ -15,7 +15,7 @@
 - Если появятся claims без воспроизводимого evidence и без стабильного repository-основания, они должны маркироваться `unconfirmed`.
 
 ## Blocked by environment
-- macOS-only сценарии подтверждения (`Preview/Print/PDF AppKit`, `.app/.dmg`, clean install, restart lifecycle, GUI stress) остаются `blocked_env`.
+- macOS-only сценарии подтверждения (`Preview/Print/PDF AppKit`, `.app/.dmg`, clean install, restart lifecycle, GUI stress) остаются `blocked_env`; дополнительный pass attempt D-010/D-002 от 2026-03-18 это подтвердил.
 - Количество `blocked_env` в acceptance-матрице: **12**.
 
 ## D-004 Linux test path (новое)
@@ -36,6 +36,15 @@
 - Запрещённые сегменты директорий (`.build/build/Build/DerivedData/output/tmp/temp/cache/.cache`) и шумные file-patterns (`*.log/*.tmp/*.temp/*.pid/*.sqlite-wal/*.sqlite-shm/*.db-wal/*.db-shm/.DS_Store`) детектируются в любом вложенном пути.
 - В evidence зафиксированы оба сценария: `FAIL` на искусственном `Scripts/tmp/...` шуме и `PASS` после очистки; raw output + exit codes в `EVIDENCE/D015_CLEAN_RELEASE.md`.
 
+
+
+## D-010 / D-002 macOS runtime evidence pass attempt (новое)
+- Выполнен отдельный evidence-pack: `EVIDENCE/D010_D002_MACOS_RUNTIME_E2E_PASS_ATTEMPT_2026-03-18.md`.
+- Зафиксированы exact commands/raw outputs для проверки реального runtime-хоста (`sw_vers`, `xcodebuild`, `swift run SmetaApp`) и факта отсутствия PDF-артефактов в текущем запуске.
+- Независимо подтверждено только ограничение среды: запуск выполнен в Linux, а не macOS; AppKit/PDFKit SavePanel/Print/export UX path в этой среде недоступен.
+- По всем запрошенным сценариям (5 business document типов + Offert save flow + cancel/error UX matrix) текущий вердикт: `FAIL (BLOCKED_ENV)`.
+- D-002 остаётся `BLOCKED_ENV`; D-010 остаётся `PARTIAL` (code-level фиксы есть, но нет реального macOS runtime PASS).
+- **Важно:** это не закрывает поставленную работу по D-010/D-002; задача считается невыполненной до реального macOS runtime E2E proof.
 
 ## D-010 macOS runtime E2E (обновлено)
 - Подготовлен и обновлён evidence-pack `EVIDENCE/D010_MACOS_RUNTIME_E2E.md` с exact commands/raw outputs/type-by-type verdict для Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
