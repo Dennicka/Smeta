@@ -22,6 +22,9 @@
 - Добавлен evidence-проход `Scripts/verify_document_export_pipeline.swift` и `EVIDENCE/D010_EXPORT_PIPELINE.md`: service-level runtime PASS для всех 5 типов в Linux, но AppKit PDF e2e (SavePanel/UI runtime) остаётся неподтверждённым вне macOS.
 - Для D-008 закрыт остаток generation contour по Avtal/Kreditfaktura/ÄTA/Påminnelse: view-level demo/manual строки удалены; generation вынесен в repository-backed `DocumentDraftBuilder` методы (`buildAvtal/buildKreditfaktura/buildAta/buildPaminnelse`) с единым context loader (`businessDocuments` + `businessDocumentLinesByDocumentId`) и честным `.incomplete(...)` при нехватке данных.
 - Добавлен отдельный runtime evidence pass `Scripts/verify_generation_contour_d008.swift` + `EVIDENCE/D008_GENERATION_CONTOUR.md` с type-by-type mapping для Avtal/Kreditfaktura/ÄTA/Påminnelse.
+- Для D-011 устранён fake update path в CSV import клиентов: `AppViewModel.importClientsFromCSV` больше не создаёт дубликаты с суффиксом `"(updated)"`, а применяет явные действия `.create/.update/.skip/.invalid` из `Stage5Service.buildClientImportReport(...)` с честными счётчиками `created/updated/skipped/invalid`.
+- В `Stage5Service` (SmetaApp + SmetaCore) реализован стабильный matching key priority: валидный `email` (case-insensitive) → `externalId` (идентификатор существующего клиента) → `invalid` при отсутствии ключа; неизвестный `externalId` теперь попадает в `skip`, без угадывания и без скрытого create.
+- Добавлен отдельный runtime evidence pack `EVIDENCE/D011_CLIENT_CSV_IMPORT_UPSERT.md` + verification script `Scripts/verify_client_csv_import_d011.swift` с воспроизводимыми сценариями create/update/skip/invalid.
 
 ## Repository-claimed / documented (внутренние заявления репозитория, не независимое подтверждение)
 - В `ACCEPTANCE_CHECKLIST.md` заявлено 43 PASS / 15 FAIL.
@@ -33,7 +36,6 @@
 - Любой macOS-only runtime: запуск `SmetaApp`, AppKit dialogs, Preview/Print, `.app`/`.dmg` packaging, clean install/restart lifecycle.
 - D-010 partial export pipeline сам по себе не закрывает generation contour; D-008 закрыт только после отдельного доказательства (`EVIDENCE/D008_GENERATION_CONTOUR.md`), а не через экспортный контур.
 - Полный macOS runtime e2e для фактического PDF export (NSSavePanel/AppKit file flow) по Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
-- Реальная корректность CSV update/upsert semantics (а не имитация обновлений через дубликаты).
 - Конфигурируемость процентов расчёта через settings/rules вместо hardcoded magic values.
 - Надёжность migration/update flow на предсказуемой схеме, а не на opportunistic ALTER TABLE.
 - Чистота архивного/релизного состояния (без build/output noise) как часть release readiness.

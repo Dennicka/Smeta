@@ -558,20 +558,25 @@ final class AppViewModel: ObservableObject {
 
     func importClientsFromCSV(raw: String) {
         let rows = stage5Service.parseCSV(raw)
-        let preview = stage5Service.previewClientImport(rows: rows, existing: clients)
-        guard preview.issues.isEmpty else {
-            errorMessage = "Ошибки импорта: \(preview.issues.prefix(3).map { "строка \($0.row): \($0.message)" }.joined(separator: "; "))"
-            return
-        }
+        let report = stage5Service.buildClientImportReport(rows: rows, existing: clients)
         do {
-            for row in preview.rows {
-                if row.id == 0 {
-                    _ = try repository.insertClient(row)
-                } else {
-                    _ = try repository.insertClient(Client(id: 0, name: row.name + " (updated)", email: row.email, phone: row.phone, address: row.address))
+            for action in report.actions {
+                switch action {
+                case .create(let client):
+                    _ = try repository.insertClient(client)
+                case .update(let client):
+                    try repository.updateClient(client)
+                case .skip, .invalid:
+                    continue
                 }
             }
-            infoMessage = "Импортировано: create \(preview.createCount), update \(preview.updateCount)"
+            if report.invalid > 0 {
+                let details = report.issues.prefix(3).map { "строка \($0.row): \($0.message)" }.joined(separator: "; ")
+                errorMessage = "Импорт завершён с invalid: \(report.invalid). \(details)"
+            } else {
+                errorMessage = nil
+            }
+            infoMessage = "Импортировано: created \(report.created), updated \(report.updated), skipped \(report.skipped), invalid \(report.invalid)"
             try reloadAll()
         } catch {
             errorMessage = "Импорт клиентов завершился ошибкой: \(error.localizedDescription)"

@@ -5,6 +5,11 @@ struct CSVRow {
 }
 
 final class Stage5Service {
+    private let emailRegex = try! NSRegularExpression(
+        pattern: "^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$",
+        options: [.caseInsensitive]
+    )
+
     func parseCSV(_ raw: String) -> [CSVRow] {
         let lines = raw.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         guard let header = lines.first else { return [] }
@@ -18,28 +23,116 @@ final class Stage5Service {
     }
 
     func previewClientImport(rows: [CSVRow], existing: [Client]) -> ImportPreview<Client> {
-        var mapped: [Client] = []
-        var issues: [ImportIssue] = []
-        var createCount = 0
-        var updateCount = 0
-        for (index, row) in rows.enumerated() {
-            let name = row.values["name", default: ""].trimmingCharacters(in: .whitespaces)
-            if name.isEmpty {
-                issues.append(ImportIssue(row: index + 2, field: "name", message: "Name is required"))
-                continue
-            }
-            let email = row.values["email", default: ""]
-            let phone = row.values["phone", default: ""]
-            let address = row.values["address", default: ""]
-            if let current = existing.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
-                mapped.append(Client(id: current.id, name: name, email: email, phone: phone, address: address))
-                updateCount += 1
-            } else {
-                mapped.append(Client(id: 0, name: name, email: email, phone: phone, address: address))
-                createCount += 1
+        let report = buildClientImportReport(rows: rows, existing: existing)
+        let mapped = report.actions.compactMap { action -> Client? in
+            switch action {
+            case .create(let client), .update(let client):
+                return client
+            case .skip, .invalid:
+                return nil
             }
         }
-        return ImportPreview(rows: mapped, issues: issues, createCount: createCount, updateCount: updateCount)
+        return ImportPreview(rows: mapped,
+                             issues: report.issues,
+                             createCount: report.created,
+                             updateCount: report.updated,
+                             skippedCount: report.skipped,
+                             invalidCount: report.invalid)
+    }
+
+    func buildClientImportReport(rows: [CSVRow], existing: [Client]) -> ClientImportReport {
+        let existingByEmail = Dictionary(uniqueKeysWithValues: existing.compactMap { client -> (String, Client)? in
+            let normalized = normalizeEmail(client.email)
+            return normalized.isEmpty ? nil : (normalized, client)
+        })
+        let existingByExternalId = Dictionary(uniqueKeysWithValues: existing.map { (String($0.id), $0) })
+
+        var actions: [ClientImportAction] = []
+        var issues: [ImportIssue] = []
+        var seenKeys: Set<String> = []
+        var created = 0
+        var updated = 0
+        var skipped = 0
+        var invalid = 0
+
+        for (index, row) in rows.enumerated() {
+            let rowNumber = index + 2
+            let name = row.values["name", default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawEmail = row.values["email", default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+            let email = normalizeEmail(rawEmail)
+            let externalId = row.values["externalid", default: row.values["external_id", default: ""]]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let phone = row.values["phone", default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+            let address = row.values["address", default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !name.isEmpty else {
+                let issue = ImportIssue(row: rowNumber, field: "name", message: "Name is required")
+                actions.append(.invalid(issue: issue))
+                issues.append(issue)
+                invalid += 1
+                continue
+            }
+
+            let matchingKey: String
+            let keyType: String
+            if !email.isEmpty {
+                guard isValidEmail(email) else {
+                    let issue = ImportIssue(row: rowNumber, field: "email", message: "Email is invalid")
+                    actions.append(.invalid(issue: issue))
+                    issues.append(issue)
+                    invalid += 1
+                    continue
+                }
+                matchingKey = "email:\(email)"
+                keyType = "email"
+            } else if !externalId.isEmpty {
+                matchingKey = "externalId:\(externalId)"
+                keyType = "externalId"
+            } else {
+                let issue = ImportIssue(row: rowNumber, field: "email|externalId", message: "Stable key required: valid email or externalId")
+                actions.append(.invalid(issue: issue))
+                issues.append(issue)
+                invalid += 1
+                continue
+            }
+
+            if seenKeys.contains(matchingKey) {
+                actions.append(.skip(reason: "Duplicate key in import batch (\(matchingKey))"))
+                skipped += 1
+                continue
+            }
+            seenKeys.insert(matchingKey)
+
+            if keyType == "email" {
+                if let current = existingByEmail[email] {
+                    actions.append(.update(Client(id: current.id, name: name, email: email, phone: phone, address: address)))
+                    updated += 1
+                } else {
+                    actions.append(.create(Client(id: 0, name: name, email: email, phone: phone, address: address)))
+                    created += 1
+                }
+                continue
+            }
+
+            if let current = existingByExternalId[externalId] {
+                actions.append(.update(Client(id: current.id, name: name, email: email, phone: phone, address: address)))
+                updated += 1
+            } else {
+                actions.append(.skip(reason: "externalId not found: \(externalId)"))
+                skipped += 1
+            }
+        }
+
+        return ClientImportReport(actions: actions, created: created, updated: updated, skipped: skipped, invalid: invalid, issues: issues)
+    }
+
+    private func isValidEmail(_ email: String) -> Bool {
+        let range = NSRange(email.startIndex..<email.endIndex, in: email)
+        return emailRegex.firstMatch(in: email, options: [], range: range) != nil
+    }
+
+    private func normalizeEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     func profitability(projectId: Int64, estimateLines: [EstimateLine], materials: [MaterialCatalogItem], documents: [BusinessDocument]) -> ProjectProfitability {
