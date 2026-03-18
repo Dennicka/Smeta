@@ -522,6 +522,24 @@ struct ImportPreview<Row> {
     var issues: [ImportIssue]
     var createCount: Int
     var updateCount: Int
+    var skippedCount: Int = 0
+    var invalidCount: Int = 0
+}
+
+enum ClientImportAction {
+    case create(Client)
+    case update(Client)
+    case skip(reason: String)
+    case invalid(issue: ImportIssue)
+}
+
+struct ClientImportReport {
+    var actions: [ClientImportAction]
+    var created: Int
+    var updated: Int
+    var skipped: Int
+    var invalid: Int
+    var issues: [ImportIssue]
 }
 
 struct ProjectProfitability {

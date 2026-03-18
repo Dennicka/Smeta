@@ -1,24 +1,25 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-Defect Fix 6 — углубить D-010 от service-level до macOS runtime evidence по AppKit PDF export.
+Defect Fix 8 — начать закрытие D-012 (магические проценты в расчётах).
 
 ## Scope
-- Провести macOS runtime e2e для export PDF (NSSavePanel + фактическая запись файлов) по Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
-- Для каждого типа приложить runtime evidence: скриншоты/видео, сохранённые PDF, журнал шагов и итог PASS/FAIL.
-- Обновить D-010 статус честно: оставить `PARTIAL`, если хотя бы часть типов не подтверждена в macOS runtime.
+- Найти и перечислить все hardcoded проценты в расчётном контуре (transport/equipment/waste/margin/moms и связанные коэффициенты).
+- Вынести эти проценты в явный конфигурируемый source-of-truth (settings/rules), доступный для чтения в runtime расчётах.
+- Убрать прямое использование magic constants из расчётного пути и заменить на чтение настроек/правил.
+- Добавить минимальный evidence pack с runtime проверкой, что изменение настроек влияет на результат расчёта.
 
 ## Out of scope
-- Packaging/signing/release задачи macOS (`D-001..D-003`).
-- D-011 CSV upsert redesign.
-- D-012/D-013 архитектурные переработки вне export/runtime контура.
+- macOS runtime E2E задачи (`D-001..D-003`, D-010 AppKit proof).
+- D-013 migration framework redesign.
+- Рефакторинг подсистем, не относящихся к вычислению процентов.
 
 ## Acceptance criteria
-1. Для всех 5 типов D-010 есть macOS runtime evidence фактического экспорта PDF (не только code/service level).
-2. Evidence pack содержит exact commands/шаги, raw outputs, пути к файлам, exit codes и визуальные артефакты.
-3. `CURRENT_STATE.md` и `DEFECT_BACKLOG.md` синхронизированы со статусом D-010 без завышения.
+1. В расчётном контуре больше нет hardcoded процентов из D-012: они берутся из настроек/правил.
+2. Есть воспроизводимое подтверждение, что смена значения правила меняет итог расчёта.
+3. `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md` синхронизированы по факту evidence, без завышения статуса.
 
 ## Evidence requirements
 - Exact commands + full raw outputs + exit codes.
+- Отдельный evidence-файл по D-012 (с трассировкой rule value → расчетный результат).
 - Обновлённые `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md`.
-- Отдельный evidence-файл под runtime D-010 с трассировкой тип документа → macOS proof.

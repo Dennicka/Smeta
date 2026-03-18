@@ -49,11 +49,24 @@ final class AppRepository {
     func clients() throws -> [Client] { try fetch("SELECT id,name,email,phone,address FROM clients ORDER BY id DESC") { stmt in
         Client(id: sqlite3_column_int64(stmt,0), name: text(stmt,1), email: text(stmt,2), phone: text(stmt,3), address: text(stmt,4))
     }}
+
+    func client(id: Int64) throws -> Client? {
+        try fetchWithBind("SELECT id,name,email,phone,address FROM clients WHERE id=?", bindValue: id) { stmt in
+            Client(id: sqlite3_column_int64(stmt,0), name: text(stmt,1), email: text(stmt,2), phone: text(stmt,3), address: text(stmt,4))
+        }.first
+    }
+
     func insertClient(_ c: Client) throws -> Int64 {
         try db.withStatement("INSERT INTO clients (name,email,phone,address) VALUES (?,?,?,?)") { s in
             bind(s,1,c.name); bind(s,2,c.email); bind(s,3,c.phone); bind(s,4,c.address); try step(s)
         }
         return db.lastInsertedRowID()
+    }
+
+    func updateClient(_ c: Client) throws {
+        try db.withStatement("UPDATE clients SET name=?,email=?,phone=?,address=? WHERE id=?") { s in
+            bind(s,1,c.name); bind(s,2,c.email); bind(s,3,c.phone); bind(s,4,c.address); sqlite3_bind_int64(s,5,c.id); try step(s)
+        }
     }
 
     func properties(for clientId: Int64? = nil) throws -> [PropertyObject] {

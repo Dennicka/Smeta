@@ -9,6 +9,27 @@ final class Stage5ServiceTests: XCTestCase {
         let preview = service.previewClientImport(rows: rows, existing: [])
         XCTAssertEqual(preview.issues.count, 1)
         XCTAssertEqual(preview.createCount, 1)
+        XCTAssertEqual(preview.invalidCount, 1)
+    }
+
+    func testClientImportReportSeparatesCreateUpdateSkipInvalid() {
+        let existing = [
+            Client(id: 42, name: "Existing", email: "existing@client.se", phone: "1", address: "old"),
+            Client(id: 100, name: "External", email: "", phone: "2", address: "old2")
+        ]
+        let rows = service.parseCSV("""
+name,email,phone,address,externalId
+New User,new@client.se,11,Street 1,
+Existing Changed,existing@client.se,22,Street 2,
+Ext Changed,,33,Street 3,100
+Unknown Ext,,44,Street 4,999
+Broken,bad-email,55,Street 5,
+""")
+        let report = service.buildClientImportReport(rows: rows, existing: existing)
+        XCTAssertEqual(report.created, 1)
+        XCTAssertEqual(report.updated, 2)
+        XCTAssertEqual(report.skipped, 1)
+        XCTAssertEqual(report.invalid, 1)
     }
 
     func testReceivablesBuckets() {
