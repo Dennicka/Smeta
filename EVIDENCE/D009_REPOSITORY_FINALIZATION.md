@@ -6,295 +6,75 @@ Date (UTC): 2026-03-18
 
 1. `rg -n "finalizeDocument\(documentId:.*snapshotJSON|func finalizeDocument\(" Sources Scripts Tests`
 2. `rg -n "finalizeDocumentWithSnapshot\(" Sources Scripts Tests`
-3. `swiftc Sources/SmetaApp/Models/Entities.swift Sources/SmetaApp/Data/SQLiteHelpers.swift Sources/SmetaApp/Data/SQLiteDatabase.swift Sources/SmetaApp/Repositories/AppRepository.swift Sources/SmetaApp/Repositories/AppRepository+Stage2.swift Sources/SmetaApp/Services/DocumentSnapshotBuilder.swift Scripts/verify_finalize_document_with_snapshot.swift -o /tmp/verify_finalize_document_with_snapshot`
-4. `swift test --filter DocumentSnapshotBuilderTests`
-5. `swiftc Sources/SmetaCore/Models/Entities.swift Sources/SmetaCore/Services/DocumentSnapshotBuilder.swift Scripts/verify_document_snapshot_builder.swift -o /tmp/verify_document_snapshot_builder_3b && /tmp/verify_document_snapshot_builder_3b`
+3. `cat > /tmp/sqlite3.modulemap <<'EOM'\nmodule SQLite3 [system] {\n  header \"/usr/include/sqlite3.h\"\n  link \"sqlite3\"\n  export *\n}\nEOM`
+4. `swiftc -Xcc -fmodule-map-file=/tmp/sqlite3.modulemap Sources/SmetaApp/Models/Entities.swift Sources/SmetaApp/Data/SQLiteHelpers.swift Sources/SmetaApp/Data/SQLiteDatabase.swift Sources/SmetaApp/Repositories/AppRepository.swift Sources/SmetaApp/Repositories/AppRepository+Stage2.swift Sources/SmetaApp/Services/DocumentSnapshotBuilder.swift Scripts/verify_finalize_document_with_snapshot.swift -o /tmp/verify_finalize_document_with_snapshot`
+5. `/tmp/verify_finalize_document_with_snapshot`
 
 ## 2. Full raw outputs
 
-### Command 1+2 output (grep old/new finalize paths)
+### Command 1 output (grep old finalize path)
 ```text
---- grep old finalizeDocument path ---
 Sources/SmetaApp/ViewModels/AppViewModel.swift:355:    func finalizeDocument(_ doc: BusinessDocument) {
-EXIT_CODE:0
---- grep new finalizeDocumentWithSnapshot path ---
+```
+
+### Command 2 output (grep new finalize path)
+```text
 Scripts/verify_finalize_document_with_snapshot.swift:75:            try repository.finalizeDocumentWithSnapshot(documentId: draftId, templateId: nil) { finalizedDocument, finalizedLines in
 Scripts/verify_finalize_document_with_snapshot.swift:146:                try repository.finalizeDocumentWithSnapshot(documentId: secondDraftId, templateId: nil) { _, _ in
-Sources/SmetaApp/Repositories/AppRepository+Stage2.swift:82:    func finalizeDocumentWithSnapshot(
 Sources/SmetaApp/ViewModels/AppViewModel.swift:360:            try repository.finalizeDocumentWithSnapshot(documentId: doc.id, templateId: templateId) { finalizedDoc, finalizedLines in
-EXIT_CODE:0
+Sources/SmetaApp/Repositories/AppRepository+Stage2.swift:82:    func finalizeDocumentWithSnapshot(
 ```
 
-### Command 3 output (repository-level verification script compile/run)
+### Command 3 output (create Linux SQLite3 module map)
 ```text
-Sources/SmetaApp/Data/SQLiteHelpers.swift:2:8: error: no such module 'SQLite3'
-1 | import Foundation
-2 | import SQLite3
-  |        `- error: no such module 'SQLite3'
-3 | 
-4 | let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-EXIT_CODE:1
+(no stdout)
 ```
 
-### Command 4 output (`swift test --filter DocumentSnapshotBuilderTests`)
+### Command 4 output (compile repository-level verification)
 ```text
-Building for debugging...
-[0/17] Write sources
-[3/17] Write swift-version--3B11F490242A1EB0.txt
-error: emit-module command failed with exit code 1 (use -v to see invocation)
-[5/40] Emitting module SmetaApp
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[6/49] Compiling SmetaApp MaterialsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[7/49] Compiling SmetaApp ProjectsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[8/49] Compiling SmetaApp RoomsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[9/49] Compiling SmetaApp RootView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[10/49] Compiling SmetaApp SettingsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[11/49] Compiling SmetaApp Stage2Views.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[12/49] Compiling SmetaApp Stage5OperationsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[13/49] Compiling SmetaApp WizardView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[14/49] Compiling SmetaApp WorksView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[15/49] Compiling SmetaApp DocumentSnapshotBuilder.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[16/49] Compiling SmetaApp EstimateCalculator.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[17/49] Compiling SmetaApp PDFDocumentService.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[18/49] Compiling SmetaApp Stage5Service.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[19/49] Compiling SmetaApp AppViewModel.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[20/49] Compiling SmetaApp CalculationView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[21/49] Compiling SmetaApp ClientsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[22/49] Compiling SmetaApp DashboardView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[23/49] Compiling SmetaApp DocumentsView.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[24/49] Emitting module SmetaCore
-[27/49] Compiling SmetaCore DocumentSnapshotBuilder.swift
-[28/50] Compiling SmetaCore Stage5Service.swift
-[29/51] Wrapping AST for SmetaCore for debugging
-[31/54] Compiling SmetaAppTests DocumentSnapshotBuilderTests.swift
-[32/55] Compiling SmetaAppTests Stage5ServiceTests.swift
-[33/55] Compiling SmetaApp SmetaApp.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[34/55] Compiling SmetaApp SQLiteDatabase.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[35/55] Compiling SmetaApp SQLiteHelpers.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[36/55] Compiling SmetaApp Entities.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[37/55] Compiling SmetaApp AppRepository+Stage2.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[38/55] Compiling SmetaApp AppRepository+Stage5.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[39/55] Compiling SmetaApp AppRepository.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[40/55] Compiling SmetaApp BackupService.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[41/55] Compiling SmetaApp DocumentDraftBuilder.swift
-/workspace/Smeta/Sources/SmetaApp/Data/SQLiteDatabase.swift:2:8: error: no such module 'SQLite3'
-  1 | import Foundation
-  2 | import SQLite3
-    |        `- error: no such module 'SQLite3'
-  3 | 
-  4 | enum DatabaseError: Error {
-[42/55] Emitting module SmetaAppTests
-error: fatalError
-EXIT_CODE:1
+(no stdout)
 ```
 
-### Command 5 output (builder-level verification script)
+### Command 5 output (runtime verification script)
 ```text
-[PASS] schema version is full snapshot v2
-[PASS] document meta included
+[PASS] document status set to finalized
+[PASS] document number assigned
 [PASS] snapshot stores assigned final number
-[PASS] snapshot final number is not empty
 [PASS] snapshot stores finalized status
-[PASS] company display data included
-[PASS] client display data included
-[PASS] project/object context included
-[PASS] frozen lines included
-[PASS] line totals frozen
-[PASS] totals/tax values included
-[PASS] references included
-[PASS] new snapshot recognized as full format
-[PASS] legacy snapshot still readable
-[PASS] serialized JSON contains lines block
-[PASS] serialized JSON contains financials block
-[PASS] serialized JSON contains references block
+[PASS] snapshot stores lines
+[PASS] snapshot meta populated
+[PASS] snapshot totals populated
+[PASS] snapshot builder failure throws and triggers rollback
+[PASS] rollback keeps document in draft status
+[PASS] rollback prevents snapshot insertion
+[PASS] legacy snapshot parse still works
 RESULT: PASS
-EXIT_CODE:0
 ```
 
 ## 3. Exit codes
-- Command 1 (old path grep): `0`
-- Command 2 (new path grep): `0`
-- Command 3 (repository-level script compile/run): `1`
-- Command 4 (`swift test --filter DocumentSnapshotBuilderTests`): `1`
-- Command 5 (builder-level script): `0`
 
-## 4. PASS checks
-- Old dangerous `finalizeDocument(documentId:templateId:snapshotJSON:)` method removed from repository code path.
-- Active runtime flow uses `finalizeDocumentWithSnapshot(...)` from `AppViewModel`.
-- Builder-level snapshot verification passes (final number/status + legacy/full parse).
+- Command 1: `0`
+- Command 2: `0`
+- Command 3: `0`
+- Command 4: `0`
+- Command 5: `0`
 
-## 5. FAIL checks
-- Repository-level runtime verification script cannot be executed in current Linux environment because `SQLite3` Swift module is unavailable.
-- Full `swift test` remains blocked by same `SQLite3` issue (D-004).
+## 4. PASS/FAIL per check (repository-level)
 
-## 6. Was old finalizeDocument path used?
-- No. The old repository method `finalizeDocument(documentId:templateId:snapshotJSON:)` has been removed.
+1. `document status becomes finalized` — **PASS**
+2. `document number assigned` — **PASS**
+3. `snapshot stores assigned final number` — **PASS**
+4. `snapshot stores finalized status` — **PASS**
+5. `snapshot rows are persisted` — **PASS** (`snapshot stores lines` check in runtime output)
+6. `rollback works when snapshotBuilder throws` — **PASS**
+7. `legacy snapshot parse still works` — **PASS**
 
-## 7. Grep results for old path
-- `rg -n "finalizeDocument\(documentId:.*snapshotJSON|func finalizeDocument\(" Sources Scripts Tests`
-- Result: only `AppViewModel.finalizeDocument(_ doc: BusinessDocument)` (UI handler) remains; no old repository finalize API found.
+Additional flow integrity checks:
+- Legacy dangerous repository finalize API `finalizeDocument(documentId:templateId:snapshotJSON:)` is absent from repository paths — **PASS**.
+- Active repository finalization usage is `finalizeDocumentWithSnapshot(...)` — **PASS**.
 
-## 8. Final verdict
-- **not ready for merge** as full D-009 closeout evidence, because repository-level runtime proof for `finalizeDocumentWithSnapshot(...)` is not yet executable in this environment.
-- Current honest state: **D-009 = PARTIAL** until repository-level script can be run in environment with working `SQLite3` Swift module.
+## 5. Final verdict
+
+- Repository-level runtime evidence for `finalizeDocumentWithSnapshot(...)` is now **real and passing** in a valid Linux environment with working Swift `SQLite3` module map.
+- Honest status after this evidence: **D-009 = RESOLVED**.
+- For D-009 scope, this is **ready for merge**.
