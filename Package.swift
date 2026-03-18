@@ -18,6 +18,7 @@ let package = Package(
                 .linkedFramework("PDFKit"),
                 .linkedLibrary("sqlite3")
             ]
-        )
+        ),
+        .testTarget(name: "SmetaAppTests", dependencies: ["SmetaApp"])
     ]
 )

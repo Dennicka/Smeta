@@ -18,6 +18,10 @@ final class AppViewModel: ObservableObject {
     @Published var businessDocuments: [BusinessDocument] = []
     @Published var documentSeries: [DocumentSeries] = []
     @Published var taxProfiles: [TaxProfile] = []
+    @Published var suppliers: [Supplier] = []
+    @Published var receivableBuckets: [ReceivableBucket] = []
+    @Published var selectedProjectProfitability: ProjectProfitability?
+    @Published var projectNotes: [ProjectNote] = []
     @Published var selectedProject: Project?
     @Published var searchText: String = ""
     @Published var errorMessage: String?
@@ -46,6 +50,7 @@ final class AppViewModel: ObservableObject {
     private let calculator = EstimateCalculator()
     private let pdfService = PDFDocumentService()
     private let backupService: BackupService
+    private let stage5Service = Stage5Service()
 
     init(repository: AppRepository, backupService: BackupService) {
         self.repository = repository
@@ -79,6 +84,12 @@ final class AppViewModel: ObservableObject {
         businessDocuments = try repository.businessDocuments()
         documentSeries = try repository.documentSeries()
         taxProfiles = try repository.taxProfiles()
+        suppliers = (try? repository.suppliers()) ?? []
+        receivableBuckets = stage5Service.receivablesBuckets((try? repository.receivablesDocuments()) ?? [])
+        if let project = selectedProject {
+            refreshProjectProfitability(projectId: project.id)
+            projectNotes = (try? repository.projectNotes(projectId: project.id)) ?? []
+        }
     }
 
     func addClient(name: String, email: String, phone: String, address: String) {
@@ -286,6 +297,104 @@ final class AppViewModel: ObservableObject {
     func dataLocationPath() -> String {
         backupService.dataLocation().path
     }
+
+    func importClientsFromCSV(raw: String) {
+        let rows = stage5Service.parseCSV(raw)
+        let preview = stage5Service.previewClientImport(rows: rows, existing: clients)
+        guard preview.issues.isEmpty else {
+            errorMessage = "Ошибки импорта: \(preview.issues.prefix(3).map { "строка \($0.row): \($0.message)" }.joined(separator: "; "))"
+            return
+        }
+        do {
+            for row in preview.rows {
+                if row.id == 0 {
+                    _ = try repository.insertClient(row)
+                } else {
+                    _ = try repository.insertClient(Client(id: 0, name: row.name + " (updated)", email: row.email, phone: row.phone, address: row.address))
+                }
+            }
+            infoMessage = "Импортировано: create \(preview.createCount), update \(preview.updateCount)"
+            try reloadAll()
+        } catch {
+            errorMessage = "Импорт клиентов завершился ошибкой: \(error.localizedDescription)"
+        }
+    }
+
+    func refreshProjectProfitability(projectId: Int64) {
+        do {
+            guard let estimate = try repository.estimates(projectId: projectId).first else { return }
+            let lines = try repository.estimateLines(estimateId: estimate.id)
+            let docs = businessDocuments.filter { $0.projectId == projectId }
+            selectedProjectProfitability = stage5Service.profitability(projectId: projectId, estimateLines: lines, materials: materials, documents: docs)
+        } catch {
+            errorMessage = "Не удалось рассчитать прибыльность: \(error.localizedDescription)"
+        }
+    }
+
+    func archiveProject(_ projectId: Int64) {
+        do {
+            try repository.setProjectLifecycle(projectId: projectId, status: "archived", note: "manual archive")
+            try reloadAll()
+        } catch { errorMessage = "Archive error: \(error.localizedDescription)" }
+    }
+
+    func restoreProjectFromArchive(_ projectId: Int64) {
+        do {
+            try repository.setProjectLifecycle(projectId: projectId, status: "active", note: "manual restore")
+            try reloadAll()
+        } catch { errorMessage = "Restore error: \(error.localizedDescription)" }
+    }
+
+    func addInternalNote(projectId: Int64, type: String, text: String, pinned: Bool) {
+        do {
+            try repository.addProjectNote(projectId: projectId, type: type, text: text, pinned: pinned)
+            projectNotes = try repository.projectNotes(projectId: projectId)
+        } catch { errorMessage = "Note save error: \(error.localizedDescription)" }
+    }
+
+    func exportProjectBundle(projectId: Int64) {
+        do {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Выбрать"
+            guard panel.runModal() == .OK, let folder = panel.url else { return }
+            let projectDocs = businessDocuments.filter { $0.projectId == projectId }
+            let lines = projectDocs.map { "\($0.number),\($0.type),\($0.totalAmount),\($0.paidAmount),\($0.balanceDue)" }.joined(separator: "\n")
+            let csv = "number,type,total,paid,outstanding\n" + lines
+            let exportFolder = folder.appendingPathComponent("smeta-project-\(projectId)-\(Int(Date().timeIntervalSince1970))", isDirectory: true)
+            try FileManager.default.createDirectory(at: exportFolder, withIntermediateDirectories: true)
+            let csvPath = exportFolder.appendingPathComponent("invoice_register.csv")
+            try csv.data(using: .utf8)?.write(to: csvPath)
+            let manifest = stage5Service.buildExportManifest(appVersion: "stage5", schemaVersion: "5", files: ["invoice_register.csv"])
+            try manifest.data(using: .utf8)?.write(to: exportFolder.appendingPathComponent("manifest.json"))
+            try repository.logExport(kind: "project_bundle", scope: "project_\(projectId)", path: exportFolder.path)
+            NSWorkspace.shared.open(exportFolder)
+            infoMessage = "Export bundle создан"
+        } catch { errorMessage = "Export error: \(error.localizedDescription)" }
+    }
+
+    func resetDemoData() {
+        do {
+            let tables = ["payment_allocations","payments","document_snapshots","business_document_lines","business_documents","estimate_lines","estimates","openings","surfaces","rooms","projects","properties","clients","suppliers","supplier_articles","supplier_price_history","purchase_list_items","purchase_lists","project_notes","project_tags","project_lifecycle_history","export_logs"]
+            for table in tables { try repository.db.execute("DELETE FROM \(table);") }
+            try repository.seedIfNeeded()
+            try reloadAll()
+            infoMessage = "Demo data reset выполнен"
+        } catch { errorMessage = "Reset error: \(error.localizedDescription)" }
+    }
+
+    func clearTempExports() {
+        do {
+            let folder = repository.db.dataFolder()
+            let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            let doomed = files.filter { $0.lastPathComponent.hasPrefix("smeta-project-") }
+            for file in doomed { try? FileManager.default.removeItem(at: file) }
+            infoMessage = "Старые export artifacts очищены"
+        } catch { errorMessage = "Cleanup error: \(error.localizedDescription)" }
+    }
+
 }
 
 private extension AppRepository {

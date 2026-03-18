@@ -19,6 +19,7 @@ enum Screen: String, CaseIterable, Identifiable {
     case templates = "Document templates"
     case numbering = "Document numbering"
     case tax = "Tax settings"
+    case stage5 = "Stage 5 Operations"
     case settings = "Настройки"
     var id: String { rawValue }
 }
@@ -73,6 +74,7 @@ struct RootView: View {
                 case .templates: DocumentTemplatesView()
                 case .numbering: DocumentNumberingView()
                 case .tax: TaxSettingsView()
+                case .stage5: Stage5OperationsView()
                 case .settings: SettingsView()
                 }
             }
