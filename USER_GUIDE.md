@@ -13,3 +13,8 @@
 ## Где лежат данные
 - База: `~/Library/Application Support/Smeta/smeta.sqlite`
 - Backup: путь выбирается пользователем в диалоге сохранения.
+
+## Stage 5 Operational Layer
+- Stage 5 Operations screen: CSV import/export, profitability, receivables, lifecycle, notes.
+- Project bundle export includes CSV + manifest.json.
+- Internal ROT/VAT views are management-only and not a tax filing substitute.

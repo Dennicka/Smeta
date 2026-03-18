@@ -109,3 +109,5 @@ swift run SmetaApp
 - `RELEASE_NOTES.md`
 - `KNOWN_LIMITATIONS.md`
 - `DEMO_WALKTHROUGH.md`
+
+- Stage 5: operational/business layer for imports, purchasing, repricing, receivables, lifecycle and portability.

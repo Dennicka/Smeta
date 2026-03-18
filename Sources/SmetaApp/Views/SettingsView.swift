@@ -34,6 +34,8 @@ struct SettingsView: View {
                         }
                         Button("Backup базы") { vm.backupDatabase() }
                         Button("Restore базы") { vm.restoreDatabase() }
+                        Button("Reset demo") { vm.resetDemoData() }
+                        Button("Clear export artifacts") { vm.clearTempExports() }
                     }
                 }
             }

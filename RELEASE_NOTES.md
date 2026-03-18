@@ -19,3 +19,6 @@
 ## Backup/restore
 - Timestamped имя backup.
 - Подтверждение destructive restore.
+
+## Stage 5 (operational layer)
+- Added import/export operational UI, suppliers/purchases storage, repricing/profitability helpers, receivables buckets, lifecycle archive/restore, notes/tags scaffolding, data portability manifest exports, and admin reset tools.

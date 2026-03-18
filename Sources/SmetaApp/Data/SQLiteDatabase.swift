@@ -461,6 +461,93 @@ final class SQLiteDatabase {
         try? execute("ALTER TABLE material_catalog ADD COLUMN stock REAL NOT NULL DEFAULT 0;")
         try? execute("ALTER TABLE material_catalog ADD COLUMN comment TEXT NOT NULL DEFAULT '';")
         try? execute("ALTER TABLE material_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE projects ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active';")
+        try? execute("ALTER TABLE projects ADD COLUMN archived_at REAL;")
+        try? execute("ALTER TABLE business_documents ADD COLUMN reminder_status TEXT NOT NULL DEFAULT 'none';")
+        try? execute("ALTER TABLE business_documents ADD COLUMN internal_flag TEXT NOT NULL DEFAULT '';")
+
+        try execute("""
+        CREATE TABLE IF NOT EXISTS supplier_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
+        );
+        CREATE TABLE IF NOT EXISTS supplier_price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_article_id INTEGER NOT NULL,
+            purchase_price REAL NOT NULL,
+            changed_at REAL NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            FOREIGN KEY(supplier_article_id) REFERENCES supplier_articles(id)
+        );
+        CREATE TABLE IF NOT EXISTS material_price_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_item_id INTEGER NOT NULL UNIQUE,
+            preferred_supplier_id INTEGER,
+            preferred_article_id INTEGER,
+            target_markup_percent REAL NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY(material_item_id) REFERENCES material_catalog(id)
+        );
+        CREATE TABLE IF NOT EXISTS purchase_lists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at REAL NOT NULL,
+            exported_at REAL,
+            note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
+        CREATE TABLE IF NOT EXISTS purchase_list_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            purchase_list_id INTEGER NOT NULL,
+            material_item_id INTEGER NOT NULL,
+            supplier_id INTEGER,
+            article_id INTEGER,
+            quantity REAL NOT NULL DEFAULT 0,
+            unit TEXT NOT NULL DEFAULT '',
+            planned_price REAL NOT NULL DEFAULT 0,
+            purchased_quantity REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            FOREIGN KEY(purchase_list_id) REFERENCES purchase_lists(id),
+            FOREIGN KEY(material_item_id) REFERENCES material_catalog(id)
+        );
+        CREATE TABLE IF NOT EXISTS project_lifecycle_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            lifecycle_status TEXT NOT NULL,
+            changed_at REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
+        CREATE TABLE IF NOT EXISTS project_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            tag TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
+        CREATE TABLE IF NOT EXISTS project_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            note_type TEXT NOT NULL,
+            text TEXT NOT NULL,
+            pinned INTEGER NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
+        CREATE TABLE IF NOT EXISTS export_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+        """)
 
         try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_business_documents_number_unique ON business_documents(number) WHERE number <> '';")
         try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_document_series_type_unique ON document_series(document_type);")

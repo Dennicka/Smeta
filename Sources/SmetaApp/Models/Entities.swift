@@ -342,3 +342,116 @@ struct ProjectStatusHistory: PersistableEntity { var id: Int64; var projectId: I
 struct DocumentSnapshot: PersistableEntity { var id: Int64; var documentId: Int64; var templateId: Int64?; var snapshotJSON: String; var createdAt: Date }
 struct Payment: PersistableEntity { var id: Int64; var amount: Double; var paidAt: Date; var method: String; var reference: String }
 struct PaymentAllocation: PersistableEntity { var id: Int64; var paymentId: Int64; var documentId: Int64; var amount: Double }
+
+struct SupplierContact: PersistableEntity {
+    var id: Int64
+    var supplierId: Int64
+    var name: String
+    var role: String
+    var email: String
+    var phone: String
+    var isPrimary: Bool
+}
+
+struct SupplierPriceHistory: PersistableEntity {
+    var id: Int64
+    var supplierArticleId: Int64
+    var purchasePrice: Double
+    var changedAt: Date
+    var source: String
+}
+
+struct PurchaseList: PersistableEntity {
+    var id: Int64
+    var projectId: Int64
+    var status: String
+    var createdAt: Date
+    var exportedAt: Date?
+    var note: String
+}
+
+struct PurchaseListItem: PersistableEntity {
+    var id: Int64
+    var purchaseListId: Int64
+    var materialItemId: Int64
+    var supplierId: Int64?
+    var articleId: Int64?
+    var quantity: Double
+    var unit: String
+    var plannedPrice: Double
+    var purchasedQuantity: Double
+    var status: String
+}
+
+struct MaterialPriceProfile: PersistableEntity {
+    var id: Int64
+    var materialItemId: Int64
+    var preferredSupplierId: Int64?
+    var preferredArticleId: Int64?
+    var targetMarkupPercent: Double
+    var updatedAt: Date
+}
+
+struct ProjectLifecycleEntry: PersistableEntity {
+    var id: Int64
+    var projectId: Int64
+    var lifecycleStatus: String
+    var changedAt: Date
+    var note: String
+}
+
+struct ProjectTag: PersistableEntity {
+    var id: Int64
+    var projectId: Int64
+    var tag: String
+}
+
+struct ProjectNote: PersistableEntity {
+    var id: Int64
+    var projectId: Int64
+    var noteType: String
+    var text: String
+    var pinned: Bool
+    var updatedAt: Date
+}
+
+struct ExportLog: PersistableEntity {
+    var id: Int64
+    var kind: String
+    var scope: String
+    var path: String
+    var createdAt: Date
+}
+
+struct ImportIssue: Identifiable {
+    var id: UUID = UUID()
+    var row: Int
+    var field: String
+    var message: String
+}
+
+struct ImportPreview<Row> {
+    var rows: [Row]
+    var issues: [ImportIssue]
+    var createCount: Int
+    var updateCount: Int
+}
+
+struct ProjectProfitability {
+    var projectId: Int64
+    var plannedLaborRevenue: Double
+    var plannedMaterialRevenue: Double
+    var plannedCost: Double
+    var plannedGrossMargin: Double
+    var actualInvoicedAmount: Double
+    var paidAmount: Double
+    var outstandingAmount: Double
+    var expectedROTClaimAmount: Double
+    var creditedAmount: Double
+}
+
+struct ReceivableBucket {
+    var title: String
+    var documents: [BusinessDocument]
+    var totalOutstanding: Double
+}
