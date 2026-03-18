@@ -30,11 +30,14 @@ struct RootView: View {
     @State private var selected: Screen? = .dashboard
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             List(Screen.allCases, selection: $selected) { screen in
                 Text(screen.rawValue).font(.title3)
             }
-        } detail: {
+            .frame(minWidth: 260, maxWidth: 320)
+
+            Divider()
+
             VStack {
                 TextField("Поиск", text: $vm.searchText)
                     .textFieldStyle(.roundedBorder)
@@ -43,7 +46,7 @@ struct RootView: View {
                 if let info = vm.infoMessage {
                     Text(info)
                         .font(.callout)
-                        .foregroundStyle(.green)
+                        .foregroundColor(.green)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal)
                 }
@@ -51,7 +54,7 @@ struct RootView: View {
                 if let error = vm.errorMessage {
                     Text(error)
                         .font(.callout)
-                        .foregroundStyle(.red)
+                        .foregroundColor(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal)
                 }
