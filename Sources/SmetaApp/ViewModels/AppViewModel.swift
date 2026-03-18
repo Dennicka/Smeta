@@ -54,6 +54,7 @@ final class AppViewModel: ObservableObject {
     private let stage5Service = Stage5Service()
     private let documentDraftBuilder = DocumentDraftBuilder()
     private let documentSnapshotBuilder = DocumentSnapshotBuilder()
+    private let documentExportPipeline = DocumentExportPipeline()
 
     init(repository: AppRepository, backupService: BackupService) {
         self.repository = repository
@@ -384,6 +385,39 @@ final class AppViewModel: ObservableObject {
             try reloadAll()
         } catch {
             errorMessage = "Не удалось финализировать документ: \(error.localizedDescription)"
+        }
+    }
+
+    func exportDocumentPDF(_ doc: BusinessDocument) {
+        let supportedTypes: Set<String> = [
+            DocumentType.avtal.rawValue,
+            DocumentType.faktura.rawValue,
+            DocumentType.kreditfaktura.rawValue,
+            DocumentType.ata.rawValue,
+            DocumentType.paminnelse.rawValue
+        ]
+        guard supportedTypes.contains(doc.type) else {
+            errorMessage = "Export поддержан только для Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse"
+            return
+        }
+
+        do {
+            let lines = try repository.businessDocumentLines(documentId: doc.id)
+            let snapshots = try repository.documentSnapshots(documentId: doc.id)
+            let payload = try documentExportPipeline.buildPayload(document: doc, lines: lines, snapshots: snapshots)
+
+            let panel = NSSavePanel()
+            let identifier = doc.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "DRAFT-\(doc.id)" : doc.number
+            panel.nameFieldStringValue = "\(doc.type)-\(identifier).pdf"
+            panel.allowedFileTypes = ["pdf"]
+            if panel.runModal() == .OK, let url = panel.url {
+                try pdfService.generateBusinessDocumentPDF(title: payload.title, body: payload.body, saveURL: url)
+                try repository.logExport(kind: "business_document_pdf", scope: "document_\(doc.id)_\(doc.type)_\(payload.source.rawValue)", path: url.path)
+                infoMessage = "PDF экспортирован (\(payload.source.rawValue))"
+                try reloadAll()
+            }
+        } catch {
+            errorMessage = "Не удалось экспортировать PDF: \(error.localizedDescription)"
         }
     }
 
