@@ -25,8 +25,8 @@
 - Для D-011 устранён fake update path в CSV import клиентов: `AppViewModel.importClientsFromCSV` больше не создаёт дубликаты с суффиксом `"(updated)"`, а применяет явные действия `.create/.update/.skip/.invalid` из `Stage5Service.buildClientImportReport(...)` с честными счётчиками `created/updated/skipped/invalid`.
 - В `Stage5Service` (SmetaApp + SmetaCore) реализован стабильный matching key priority: валидный `email` (case-insensitive) → `externalId` (идентификатор существующего клиента) → `invalid` при отсутствии ключа; неизвестный `externalId` теперь попадает в `skip`, без угадывания и без скрытого create.
 - Добавлен отдельный runtime evidence pack `EVIDENCE/D011_CLIENT_CSV_IMPORT_UPSERT.md` + verification script `Scripts/verify_client_csv_import_d011.swift` с воспроизводимыми сценариями create/update/skip/invalid.
-- Для D-012 расчётные проценты `transport/equipment/waste/margin/moms` в `EstimateCalculator` больше не захардкожены в totals path: введён единый persisted source `calculation_rules` + модель `CalculationRules`, чтение через `AppRepository.calculationRules()` и передача в runtime-калькулятор через `AppViewModel`.
-- Добавлен evidence pack `EVIDENCE/D012_CALCULATION_RULES.md` + script `Scripts/verify_calculation_rules_d012.swift`: в runtime подтверждено, что изменение rule values меняет итог (`BASELINE_TOTAL=7364.00` → `TUNED_TOTAL=9009.00`).
+- Для D-012 полностью закрыт остаток money-impacting literals: пороги `0.01/0.1/0.2` вынесены из `EstimateCalculator` в persisted `calculation_rules` (`min_speed_rate/min_work_medium_speed/min_work_base_rate_per_unit_hour/min_speed_days_divider/min_material_usage_per_work_unit/min_material_quantity`), а Stage2 VAT больше не использует hardcoded fallback `0.25`, а берётся из persisted `tax_profiles`.
+- Добавлен evidence pack `EVIDENCE/D012_DEFECT_FIX_8B.md` + обновлённые scripts `Scripts/verify_calculation_rules_d012.swift` и `Scripts/verify_document_draft_builder.swift`: в runtime подтверждено влияние каждого rule-поля на релевантный результат и отсутствие hidden VAT fallback в расчётном контуре draft builder.
 
 ## Repository-claimed / documented (внутренние заявления репозитория, не независимое подтверждение)
 - В `ACCEPTANCE_CHECKLIST.md` заявлено 43 PASS / 15 FAIL.
@@ -38,7 +38,6 @@
 - Любой macOS-only runtime: запуск `SmetaApp`, AppKit dialogs, Preview/Print, `.app`/`.dmg` packaging, clean install/restart lifecycle.
 - D-010 partial export pipeline сам по себе не закрывает generation contour; D-008 закрыт только после отдельного доказательства (`EVIDENCE/D008_GENERATION_CONTOUR.md`), а не через экспортный контур.
 - Полный macOS runtime e2e для фактического PDF export (NSSavePanel/AppKit file flow) по Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
-- Полное устранение всех money-impacting hardcoded коэффициентов в расчётном контуре: остаются guardrail-константы (`0.01`, `0.1`, `0.2`) в `EstimateCalculator` и VAT fallback `0.25` вне нового `calculation_rules` source.
 - Надёжность migration/update flow на предсказуемой схеме, а не на opportunistic ALTER TABLE.
 - Чистота архивного/релизного состояния (без build/output noise) как часть release readiness.
 

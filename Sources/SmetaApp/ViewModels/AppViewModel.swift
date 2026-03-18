@@ -246,7 +246,11 @@ final class AppViewModel: ObservableObject {
             let labor = lines.filter { $0.lineType == "labor" }.reduce(0) { $0 + $1.total }
             let material = lines.filter { $0.lineType == "material" }.reduce(0) { $0 + $1.total }
             let other = lines.filter { $0.lineType == "other" }.reduce(0) { $0 + $1.total }
-            let vatRate = taxMode == .reverseCharge ? 0 : 0.25
+            guard let taxProfile = taxProfiles.first(where: { $0.active && $0.customerType == customerType.rawValue && $0.taxMode == taxMode.rawValue }) else {
+                errorMessage = "Не найден активный налоговый профиль для \(customerType.rawValue)/\(taxMode.rawValue)"
+                return
+            }
+            let vatRate = taxProfile.vatRate
             let rotEligible = lines.filter { $0.isRotEligible }.reduce(0) { $0 + $1.total }
             let rotReduction = rotEligible * rotPercent
             let subtotal = labor + material + other
@@ -408,7 +412,8 @@ final class AppViewModel: ObservableObject {
             workItemsById: worksById,
             materialItemsById: materialsById,
             businessDocuments: projectDocuments,
-            businessDocumentLinesByDocumentId: projectDocumentLines
+            businessDocumentLinesByDocumentId: projectDocumentLines,
+            taxProfiles: taxProfiles
         )
     }
 

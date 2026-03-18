@@ -99,13 +99,19 @@ final class AppRepository {
     }
 
     func calculationRules() throws -> CalculationRules {
-        if let row = try fetch("SELECT id,transport_percent,equipment_percent,waste_percent,margin_percent,moms_percent FROM calculation_rules WHERE id=1 LIMIT 1", { s in
+        if let row = try fetch("SELECT id,transport_percent,equipment_percent,waste_percent,margin_percent,moms_percent,min_speed_rate,min_work_medium_speed,min_work_base_rate_per_unit_hour,min_speed_days_divider,min_material_usage_per_work_unit,min_material_quantity FROM calculation_rules WHERE id=1 LIMIT 1", { s in
             CalculationRules(id: sqlite3_column_int64(s, 0),
                              transportPercent: sqlite3_column_double(s, 1),
                              equipmentPercent: sqlite3_column_double(s, 2),
                              wastePercent: sqlite3_column_double(s, 3),
                              marginPercent: sqlite3_column_double(s, 4),
-                             momsPercent: sqlite3_column_double(s, 5))
+                             momsPercent: sqlite3_column_double(s, 5),
+                             minSpeedRate: sqlite3_column_double(s, 6),
+                             minWorkMediumSpeed: sqlite3_column_double(s, 7),
+                             minWorkBaseRatePerUnitHour: sqlite3_column_double(s, 8),
+                             minSpeedDaysDivider: sqlite3_column_double(s, 9),
+                             minMaterialUsagePerWorkUnit: sqlite3_column_double(s, 10),
+                             minMaterialQuantity: sqlite3_column_double(s, 11))
         }).first {
             return row
         }
@@ -115,20 +121,32 @@ final class AppRepository {
 
     func upsertCalculationRules(_ rules: CalculationRules) throws {
         try db.withStatement("""
-        INSERT INTO calculation_rules (id,transport_percent,equipment_percent,waste_percent,margin_percent,moms_percent)
-        VALUES (1,?,?,?,?,?)
+        INSERT INTO calculation_rules (id,transport_percent,equipment_percent,waste_percent,margin_percent,moms_percent,min_speed_rate,min_work_medium_speed,min_work_base_rate_per_unit_hour,min_speed_days_divider,min_material_usage_per_work_unit,min_material_quantity)
+        VALUES (1,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
             transport_percent=excluded.transport_percent,
             equipment_percent=excluded.equipment_percent,
             waste_percent=excluded.waste_percent,
             margin_percent=excluded.margin_percent,
-            moms_percent=excluded.moms_percent
+            moms_percent=excluded.moms_percent,
+            min_speed_rate=excluded.min_speed_rate,
+            min_work_medium_speed=excluded.min_work_medium_speed,
+            min_work_base_rate_per_unit_hour=excluded.min_work_base_rate_per_unit_hour,
+            min_speed_days_divider=excluded.min_speed_days_divider,
+            min_material_usage_per_work_unit=excluded.min_material_usage_per_work_unit,
+            min_material_quantity=excluded.min_material_quantity
         """) { s in
             sqlite3_bind_double(s, 1, rules.transportPercent)
             sqlite3_bind_double(s, 2, rules.equipmentPercent)
             sqlite3_bind_double(s, 3, rules.wastePercent)
             sqlite3_bind_double(s, 4, rules.marginPercent)
             sqlite3_bind_double(s, 5, rules.momsPercent)
+            sqlite3_bind_double(s, 6, rules.minSpeedRate)
+            sqlite3_bind_double(s, 7, rules.minWorkMediumSpeed)
+            sqlite3_bind_double(s, 8, rules.minWorkBaseRatePerUnitHour)
+            sqlite3_bind_double(s, 9, rules.minSpeedDaysDivider)
+            sqlite3_bind_double(s, 10, rules.minMaterialUsagePerWorkUnit)
+            sqlite3_bind_double(s, 11, rules.minMaterialQuantity)
             try step(s)
         }
     }

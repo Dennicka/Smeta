@@ -258,7 +258,12 @@ final class DocumentDraftBuilderTests: XCTestCase {
                 EstimateLine(id: 2, estimateId: 4, roomId: 1, workItemId: nil, materialItemId: 200, quantity: 12, unitPrice: 90, coefficient: 1, type: "material")
             ],
             workItemsById: [100: work],
-            materialItemsById: [200: material]
+            materialItemsById: [200: material],
+            taxProfiles: [
+                TaxProfile(id: 1, name: "B2C Moms 25%", customerType: CustomerType.b2c.rawValue, taxMode: TaxMode.normal.rawValue, vatRate: 0.25, rotPercent: 0.3, active: true),
+                TaxProfile(id: 2, name: "B2B Moms 25%", customerType: CustomerType.b2b.rawValue, taxMode: TaxMode.normal.rawValue, vatRate: 0.25, rotPercent: 0, active: true),
+                TaxProfile(id: 3, name: "B2B Reverse Charge", customerType: CustomerType.b2b.rawValue, taxMode: TaxMode.reverseCharge.rawValue, vatRate: 0, rotPercent: 0, active: true)
+            ]
         )
     }
 }

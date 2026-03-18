@@ -415,7 +415,13 @@ final class SQLiteDatabase {
             equipment_percent REAL NOT NULL DEFAULT 0.03,
             waste_percent REAL NOT NULL DEFAULT 0.04,
             margin_percent REAL NOT NULL DEFAULT 0.12,
-            moms_percent REAL NOT NULL DEFAULT 0.25
+            moms_percent REAL NOT NULL DEFAULT 0.25,
+            min_speed_rate REAL NOT NULL DEFAULT 0.01,
+            min_work_medium_speed REAL NOT NULL DEFAULT 0.1,
+            min_work_base_rate_per_unit_hour REAL NOT NULL DEFAULT 0.01,
+            min_speed_days_divider REAL NOT NULL DEFAULT 0.1,
+            min_material_usage_per_work_unit REAL NOT NULL DEFAULT 0.2,
+            min_material_quantity REAL NOT NULL DEFAULT 0.01
         );
 
         """)
@@ -427,8 +433,14 @@ final class SQLiteDatabase {
             equipment_percent,
             waste_percent,
             margin_percent,
-            moms_percent
-        ) VALUES (1, 0.02, 0.03, 0.04, 0.12, 0.25);
+            moms_percent,
+            min_speed_rate,
+            min_work_medium_speed,
+            min_work_base_rate_per_unit_hour,
+            min_speed_days_divider,
+            min_material_usage_per_work_unit,
+            min_material_quantity
+        ) VALUES (1, 0.02, 0.03, 0.04, 0.12, 0.25, 0.01, 0.1, 0.01, 0.1, 0.2, 0.01);
         """)
 
         try? execute("ALTER TABLE projects ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'draft';")
@@ -478,6 +490,12 @@ final class SQLiteDatabase {
         try? execute("ALTER TABLE material_catalog ADD COLUMN usage_per_work_unit REAL NOT NULL DEFAULT 0;")
         try? execute("ALTER TABLE material_catalog ADD COLUMN package_size REAL NOT NULL DEFAULT 1;")
         try? execute("ALTER TABLE material_catalog ADD COLUMN stock REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_speed_rate REAL NOT NULL DEFAULT 0.01;")
+        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_work_medium_speed REAL NOT NULL DEFAULT 0.1;")
+        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_work_base_rate_per_unit_hour REAL NOT NULL DEFAULT 0.01;")
+        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_speed_days_divider REAL NOT NULL DEFAULT 0.1;")
+        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_material_usage_per_work_unit REAL NOT NULL DEFAULT 0.2;")
+        try? execute("ALTER TABLE calculation_rules ADD COLUMN min_material_quantity REAL NOT NULL DEFAULT 0.01;")
         try? execute("ALTER TABLE material_catalog ADD COLUMN comment TEXT NOT NULL DEFAULT '';")
         try? execute("ALTER TABLE material_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
         try? execute("ALTER TABLE projects ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active';")

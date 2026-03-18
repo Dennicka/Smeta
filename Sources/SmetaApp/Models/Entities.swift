@@ -316,6 +316,12 @@ struct CalculationRules: PersistableEntity {
     var wastePercent: Double
     var marginPercent: Double
     var momsPercent: Double
+    var minSpeedRate: Double
+    var minWorkMediumSpeed: Double
+    var minWorkBaseRatePerUnitHour: Double
+    var minSpeedDaysDivider: Double
+    var minMaterialUsagePerWorkUnit: Double
+    var minMaterialQuantity: Double
 
     static let `default` = CalculationRules(
         id: 1,
@@ -323,7 +329,13 @@ struct CalculationRules: PersistableEntity {
         equipmentPercent: 0.03,
         wastePercent: 0.04,
         marginPercent: 0.12,
-        momsPercent: 0.25
+        momsPercent: 0.25,
+        minSpeedRate: 0.01,
+        minWorkMediumSpeed: 0.1,
+        minWorkBaseRatePerUnitHour: 0.01,
+        minSpeedDaysDivider: 0.1,
+        minMaterialUsagePerWorkUnit: 0.2,
+        minMaterialQuantity: 0.01
     )
 }
 
