@@ -54,7 +54,6 @@ struct Stage5OperationsView: View {
                             HStack {
                                 TextField("Internal note", text: $noteText)
                                 Button("Add note") {
-                                    guard !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                                     vm.addInternalNote(projectId: project.id, type: "internal", text: noteText, pinned: false)
                                     noteText = ""
                                 }

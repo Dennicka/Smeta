@@ -56,6 +56,7 @@ final class AppViewModel: ObservableObject {
     private let documentDraftBuilder = DocumentDraftBuilder()
     private let documentSnapshotBuilder = DocumentSnapshotBuilder()
     private let documentExportPipeline = DocumentExportPipeline()
+    private let pdfFileState = PDFFileStateOrchestrator()
 
     init(repository: AppRepository, backupService: BackupService) {
         self.repository = repository
@@ -175,9 +176,15 @@ final class AppViewModel: ObservableObject {
     func updateTemplate(_ item: DocumentTemplate) { do { try repository.updateTemplate(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить шаблон") } }
 
     func calculate() {
-        guard let project = selectedProject else { return }
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект перед расчётом"
+            return
+        }
         let projectRooms = rooms.filter { $0.projectId == project.id }
-        guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first else { return }
+        guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first else {
+            errorMessage = "Не найден профиль скорости для расчёта"
+            return
+        }
         let openings = Dictionary(uniqueKeysWithValues: projectRooms.map { ($0.id, openingsByRoom[$0.id, default: []]) })
         let surfaces = Dictionary(uniqueKeysWithValues: projectRooms.map { ($0.id, surfacesByRoom[$0.id, default: []]) })
         calculationResult = calculator.calculate(rooms: projectRooms,
@@ -193,32 +200,114 @@ final class AppViewModel: ObservableObject {
     }
 
     func saveEstimateAndGenerateDocument() {
-        guard let project = selectedProject,
-              let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first,
-              let calc = calculationResult,
-              let template = templates.first,
-              let company = try? repository.companies().first,
-              let client = clients.first(where: { $0.id == project.clientId })
-        else { return }
-
         do {
-            let estimateId = try repository.insertEstimate(Estimate(id: 0, projectId: project.id, speedProfileId: speed.id, laborRatePerHour: laborRatePerHour, overheadCoefficient: overheadCoefficient, createdAt: Date()))
-
-            for row in calc.rows {
-                if let room = rooms.first(where: { $0.name == row.roomName }) {
-                    let work = works.first(where: { $0.name == row.itemName })
-                    let material = materials.first(where: { $0.name == row.itemName })
-                    try repository.insertEstimateLine(EstimateLine(id: 0, estimateId: estimateId, roomId: room.id, workItemId: work?.id, materialItemId: material?.id, quantity: row.quantity, unitPrice: row.total, coefficient: row.coefficient, type: work == nil ? "material" : "work"))
-                }
+            guard let project = selectedProject else {
+                errorMessage = "Выберите проект перед генерацией Offert"
+                return
+            }
+            guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first else {
+                errorMessage = "Не найден профиль скорости для генерации Offert"
+                return
+            }
+            guard let calc = calculationResult else {
+                errorMessage = "Сначала выполните расчёт, затем генерируйте Offert"
+                return
+            }
+            guard let template = templates.first else {
+                errorMessage = "Не найден шаблон документа для Offert"
+                return
+            }
+            guard let company = try repository.companies().first else {
+                errorMessage = "Не заполнены реквизиты компании для Offert"
+                return
+            }
+            guard let client = clients.first(where: { $0.id == project.clientId }) else {
+                errorMessage = "Не найден клиент проекта для Offert"
+                return
             }
 
             let panel = NSSavePanel()
             panel.nameFieldStringValue = "Offert-\(project.name).pdf"
             panel.allowedFileTypes = ["pdf"]
-            if panel.runModal() == .OK, let url = panel.url {
-                try pdfService.generateOffertSwedish(template: template, company: company, client: client, project: project, result: calc, saveURL: url)
-                try repository.insertGeneratedDocument(GeneratedDocument(id: 0, estimateId: estimateId, templateId: template.id, title: "Offert \(project.name)", path: url.path, generatedAt: Date()))
+            guard panel.runModal() == .OK, let finalURL = panel.url else {
+                infoMessage = "Генерация Offert отменена пользователем"
+                return
+            }
+
+            let tempURL = pdfFileState.temporaryPDFURL(near: finalURL, prefix: "offert-pending")
+            var didMoveToFinal = false
+            var backupURL: URL?
+            var committed = false
+            var beganTransaction = false
+            do {
+                try pdfService.generateOffertSwedish(template: template, company: company, client: client, project: project, result: calc, saveURL: tempURL)
+                try repository.db.execute("BEGIN IMMEDIATE TRANSACTION")
+                beganTransaction = true
+
+                let estimateId = try repository.insertEstimate(Estimate(id: 0, projectId: project.id, speedProfileId: speed.id, laborRatePerHour: laborRatePerHour, overheadCoefficient: overheadCoefficient, createdAt: Date()))
+                for row in calc.rows {
+                    if let room = rooms.first(where: { $0.name == row.roomName }) {
+                        let work = works.first(where: { $0.name == row.itemName })
+                        let material = materials.first(where: { $0.name == row.itemName })
+                        try repository.insertEstimateLine(EstimateLine(id: 0, estimateId: estimateId, roomId: room.id, workItemId: work?.id, materialItemId: material?.id, quantity: row.quantity, unitPrice: row.total, coefficient: row.coefficient, type: work == nil ? "material" : "work"))
+                    }
+                }
+                try repository.insertGeneratedDocument(GeneratedDocument(id: 0, estimateId: estimateId, templateId: template.id, title: "Offert \(project.name)", path: finalURL.path, generatedAt: Date()))
+                backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
+                try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
+                didMoveToFinal = true
+                try repository.db.execute("COMMIT")
+                committed = true
+            } catch {
+                var recoveryFailures: [String] = []
+                if beganTransaction && !committed {
+                    do {
+                        try repository.db.execute("ROLLBACK")
+                    } catch {
+                        recoveryFailures.append("rollback БД не выполнен: \(error.localizedDescription)")
+                    }
+                }
+                if beganTransaction {
+                    do {
+                        try pdfFileState.recoverAfterFailedCommit(finalURL: finalURL, backupURL: backupURL, didPromote: didMoveToFinal)
+                    } catch {
+                        recoveryFailures.append(error.localizedDescription)
+                    }
+                }
+                do {
+                    try pdfFileState.removeTemporaryFileIfPresent(at: tempURL)
+                } catch {
+                    recoveryFailures.append("не удалось удалить временный PDF: \(error.localizedDescription)")
+                }
+                if !recoveryFailures.isEmpty {
+                    throw NSError(domain: "PDFRecovery", code: 1, userInfo: [NSLocalizedDescriptionKey: "Ошибка операции и неполное восстановление: \(recoveryFailures.joined(separator: " | "))"])
+                }
+                throw error
+            }
+
+            try pdfFileState.removeTemporaryFileIfPresent(at: tempURL)
+            var backupCleanupWarning: String?
+            if let backupURL {
+                do {
+                    try pdfFileState.cleanupBackupAfterCommit(backupURL: backupURL)
+                } catch {
+                    backupCleanupWarning = "Offert сохранён, но cleanup backup не завершился: \(error.localizedDescription)"
+                }
+            }
+            var refreshWarning: String?
+            do {
                 try reloadAll()
+            } catch {
+                refreshWarning = "Offert сохранён, но обновление экрана не выполнено: \(error.localizedDescription)"
+            }
+            if let backupCleanupWarning, let refreshWarning {
+                infoMessage = "\(backupCleanupWarning) | \(refreshWarning)"
+            } else if let backupCleanupWarning {
+                infoMessage = backupCleanupWarning
+            } else if let refreshWarning {
+                infoMessage = refreshWarning
+            } else {
+                infoMessage = "Offert сохранён"
             }
         } catch { present(error: error, prefix: "Ошибка генерации Offert") }
     }
@@ -504,11 +593,77 @@ final class AppViewModel: ObservableObject {
             let identifier = doc.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "DRAFT-\(doc.id)" : doc.number
             panel.nameFieldStringValue = "\(doc.type)-\(identifier).pdf"
             panel.allowedFileTypes = ["pdf"]
-            if panel.runModal() == .OK, let url = panel.url {
-                try pdfService.generateBusinessDocumentPDF(title: payload.title, body: payload.body, saveURL: url)
-                try repository.logExport(kind: "business_document_pdf", scope: "document_\(doc.id)_\(doc.type)_\(payload.source.rawValue)", path: url.path)
-                infoMessage = "PDF экспортирован (\(payload.source.rawValue))"
+            guard panel.runModal() == .OK, let finalURL = panel.url else {
+                infoMessage = "Экспорт PDF отменён пользователем"
+                return
+            }
+
+            let tempURL = pdfFileState.temporaryPDFURL(near: finalURL, prefix: "business-document-pending")
+            var didMoveToFinal = false
+            var backupURL: URL?
+            var committed = false
+            var beganTransaction = false
+            do {
+                try pdfService.generateBusinessDocumentPDF(title: payload.title, body: payload.body, saveURL: tempURL)
+                try repository.db.execute("BEGIN IMMEDIATE TRANSACTION")
+                beganTransaction = true
+
+                try repository.logExport(kind: "business_document_pdf", scope: "document_\(doc.id)_\(doc.type)_\(payload.source.rawValue)", path: finalURL.path)
+                backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
+                try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
+                didMoveToFinal = true
+                try repository.db.execute("COMMIT")
+                committed = true
+            } catch {
+                var recoveryFailures: [String] = []
+                if beganTransaction && !committed {
+                    do {
+                        try repository.db.execute("ROLLBACK")
+                    } catch {
+                        recoveryFailures.append("rollback БД не выполнен: \(error.localizedDescription)")
+                    }
+                }
+                if beganTransaction {
+                    do {
+                        try pdfFileState.recoverAfterFailedCommit(finalURL: finalURL, backupURL: backupURL, didPromote: didMoveToFinal)
+                    } catch {
+                        recoveryFailures.append(error.localizedDescription)
+                    }
+                }
+                do {
+                    try pdfFileState.removeTemporaryFileIfPresent(at: tempURL)
+                } catch {
+                    recoveryFailures.append("не удалось удалить временный PDF: \(error.localizedDescription)")
+                }
+                if !recoveryFailures.isEmpty {
+                    throw NSError(domain: "PDFRecovery", code: 2, userInfo: [NSLocalizedDescriptionKey: "Ошибка операции и неполное восстановление: \(recoveryFailures.joined(separator: " | "))"])
+                }
+                throw error
+            }
+
+            try pdfFileState.removeTemporaryFileIfPresent(at: tempURL)
+            var backupCleanupWarning: String?
+            if let backupURL {
+                do {
+                    try pdfFileState.cleanupBackupAfterCommit(backupURL: backupURL)
+                } catch {
+                    backupCleanupWarning = "PDF экспортирован, но cleanup backup не завершился: \(error.localizedDescription)"
+                }
+            }
+            var refreshWarning: String?
+            do {
                 try reloadAll()
+            } catch {
+                refreshWarning = "PDF экспортирован, но обновление экрана не выполнено: \(error.localizedDescription)"
+            }
+            if let backupCleanupWarning, let refreshWarning {
+                infoMessage = "\(backupCleanupWarning) | \(refreshWarning)"
+            } else if let backupCleanupWarning {
+                infoMessage = backupCleanupWarning
+            } else if let refreshWarning {
+                infoMessage = refreshWarning
+            } else {
+                infoMessage = "PDF экспортирован (\(payload.source.rawValue))"
             }
         } catch {
             errorMessage = "Не удалось экспортировать PDF: \(error.localizedDescription)"
@@ -546,7 +701,11 @@ final class AppViewModel: ObservableObject {
             try backupService.backupViaDialog()
             infoMessage = "Backup успешно создан"
         } catch {
-            errorMessage = "Backup завершился ошибкой: \(error.localizedDescription)"
+            if let backupError = error as? BackupServiceError {
+                infoMessage = backupError.localizedDescription
+            } else {
+                errorMessage = "Backup завершился ошибкой: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -556,7 +715,11 @@ final class AppViewModel: ObservableObject {
             infoMessage = "База восстановлена"
             try reloadAll()
         } catch {
-            errorMessage = "Restore завершился ошибкой: \(error.localizedDescription)"
+            if let backupError = error as? BackupServiceError {
+                infoMessage = backupError.localizedDescription
+            } else {
+                errorMessage = "Restore завершился ошибкой: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -593,7 +756,11 @@ final class AppViewModel: ObservableObject {
 
     func refreshProjectProfitability(projectId: Int64) {
         do {
-            guard let estimate = try repository.estimates(projectId: projectId).first else { return }
+            guard let estimate = try repository.estimates(projectId: projectId).first else {
+                errorMessage = "Нет сметы для расчёта прибыльности проекта"
+                selectedProjectProfitability = nil
+                return
+            }
             let lines = try repository.estimateLines(estimateId: estimate.id)
             let docs = businessDocuments.filter { $0.projectId == projectId }
             selectedProjectProfitability = stage5Service.profitability(projectId: projectId, estimateLines: lines, materials: materials, documents: docs)
@@ -617,8 +784,13 @@ final class AppViewModel: ObservableObject {
     }
 
     func addInternalNote(projectId: Int64, type: String, text: String, pinned: Bool) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Текст заметки не может быть пустым"
+            return
+        }
         do {
-            try repository.addProjectNote(projectId: projectId, type: type, text: text, pinned: pinned)
+            try repository.addProjectNote(projectId: projectId, type: type, text: trimmed, pinned: pinned)
             projectNotes = try repository.projectNotes(projectId: projectId)
         } catch { errorMessage = "Note save error: \(error.localizedDescription)" }
     }
@@ -630,16 +802,27 @@ final class AppViewModel: ObservableObject {
             panel.canChooseFiles = false
             panel.allowsMultipleSelection = false
             panel.prompt = "Выбрать"
-            guard panel.runModal() == .OK, let folder = panel.url else { return }
+            guard panel.runModal() == .OK, let folder = panel.url else {
+                infoMessage = "Export bundle отменён пользователем"
+                return
+            }
             let projectDocs = businessDocuments.filter { $0.projectId == projectId }
             let lines = projectDocs.map { "\($0.number),\($0.type),\($0.totalAmount),\($0.paidAmount),\($0.balanceDue)" }.joined(separator: "\n")
             let csv = "number,type,total,paid,outstanding\n" + lines
             let exportFolder = folder.appendingPathComponent("smeta-project-\(projectId)-\(Int(Date().timeIntervalSince1970))", isDirectory: true)
             try FileManager.default.createDirectory(at: exportFolder, withIntermediateDirectories: true)
             let csvPath = exportFolder.appendingPathComponent("invoice_register.csv")
-            try csv.data(using: .utf8)?.write(to: csvPath)
+            guard let csvData = csv.data(using: .utf8) else {
+                errorMessage = "Не удалось закодировать invoice_register.csv в UTF-8"
+                return
+            }
+            try csvData.write(to: csvPath)
             let manifest = stage5Service.buildExportManifest(appVersion: "stage5", schemaVersion: "5", files: ["invoice_register.csv"])
-            try manifest.data(using: .utf8)?.write(to: exportFolder.appendingPathComponent("manifest.json"))
+            guard let manifestData = manifest.data(using: .utf8) else {
+                errorMessage = "Не удалось закодировать manifest.json в UTF-8"
+                return
+            }
+            try manifestData.write(to: exportFolder.appendingPathComponent("manifest.json"))
             try repository.logExport(kind: "project_bundle", scope: "project_\(projectId)", path: exportFolder.path)
             NSWorkspace.shared.open(exportFolder)
             infoMessage = "Export bundle создан"
@@ -661,8 +844,19 @@ final class AppViewModel: ObservableObject {
             let folder = repository.db.dataFolder()
             let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
             let doomed = files.filter { $0.lastPathComponent.hasPrefix("smeta-project-") }
-            for file in doomed { try? FileManager.default.removeItem(at: file) }
-            infoMessage = "Старые export artifacts очищены"
+            var failedPaths: [String] = []
+            for file in doomed {
+                do {
+                    try FileManager.default.removeItem(at: file)
+                } catch {
+                    failedPaths.append("\(file.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+            if failedPaths.isEmpty {
+                infoMessage = "Старые export artifacts очищены"
+            } else {
+                errorMessage = "Часть export artifacts не удалена: \(failedPaths.joined(separator: "; "))"
+            }
         } catch { errorMessage = "Cleanup error: \(error.localizedDescription)" }
     }
 
