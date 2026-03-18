@@ -44,6 +44,44 @@
 - D-010 остаётся `PARTIAL`: для всех 5 document types runtime E2E в Linux всё ещё `FAIL (BLOCKED_ENV)` из-за отсутствия macOS AppKit runtime path (`swift build --product SmetaApp` не запускается в этой среде).
 - Следующий шаг — реальный macOS прогон с созданными PDF-артефактами и размерами файлов.
 
+## D-007a user-facing error handling pass (новое)
+- Выполнен целевой проход по критичным пользовательским цепочкам: document generation/draft/export, import-export bundle, backup/restore, lifecycle notes/profitability.
+- Убраны silent/non-user-facing paths в критичных действиях: guard-return без сообщения, optional-write swallow (`try ...?`), cancel-path без feedback и ложный успех на backup/restore cancel.
+- В `BackupService` введены typed cancel errors, а `AppViewModel` теперь корректно показывает user-facing info/error вместо silent return или false-success.
+- Добавлен evidence-pack `EVIDENCE/D007A_ERROR_HANDLING.md` с exact commands, raw outputs, exit codes и coverage map (covered / not covered / blocked).
+- D-007 после этого остаётся `PARTIAL`: кодовые silent paths в покрытом scope исправлены, но macOS runtime UX-подтверждение сообщений по AppKit flow в текущем Linux окружении недоступно (`blocked_env`).
+
+## D-007c Offert cancel semantics (новое)
+- В `saveEstimateAndGenerateDocument()` устранён ложный no-op/cancel эффект с persistence side effects: `insertEstimate`/`insertEstimateLine`/`insertGeneratedDocument` перенесены после `NSSavePanel` confirm и успешной PDF генерации.
+- Инвариант code-path теперь явный: при Cancel flow завершается с user-facing info-message и без insert-операций в persistence layer для этого сценария.
+- Подготовлен отдельный evidence-pack `EVIDENCE/D007C_OFFERT_CANCEL_SEMANTICS.md` с exact commands/raw outputs/exit codes и честным разделением: runtime confirmed vs code-path confirmed vs blocked_env.
+- Ограничение верификации не изменилось: Linux `swift test` не компилирует macOS-only `SmetaApp` target, поэтому UI-layer изменения подтверждены code-audit, а не Linux runtime AppKit execution.
+
+## D-007e orphan-file / half-success semantics (новое)
+- Для `saveEstimateAndGenerateDocument()` и `exportDocumentPDF(_:)` добавлен temp-file + transaction + cleanup pattern: PDF сначала генерируется во временный файл, затем DB/logging шаги выполняются в транзакции, финальный move делается до `COMMIT`.
+- При fail до `COMMIT` выполняется `ROLLBACK`; временный файл удаляется, а если финальный файл уже был создан в этом flow — он также очищается, чтобы не оставлять orphan artifact при persistence/logging ошибке.
+- Вынесены helper-функции подготовки/переноса PDF и унифицирована схема атомаризации/cleanup для обоих критичных экспортных сценариев.
+- Добавлен evidence-pack `EVIDENCE/D007E_ATOMIC_PDF_PERSISTENCE.md` с exact commands/raw outputs/exit codes и отдельной фиксацией runtime-vs-code-path-vs-blocked_env.
+
+## D-007g safe overwrite semantics (новое)
+- Убрана destructive delete-before-replace схема, которая могла уничтожить pre-existing пользовательский PDF при fail после move/до commit.
+- Temp PDF теперь создаётся рядом с `finalURL` (same-directory path), а не в global temporary directory; это устраняет cross-volume ambiguity для replace-flow.
+- Реализована backup/restore стратегия для существующего `finalURL`: старый файл переносится в backup перед подменой, и при fail до commit восстанавливается автоматически, а при success удаляется после commit.
+- Безопасная схема применена в обоих целевых flow: `saveEstimateAndGenerateDocument()` и `exportDocumentPDF(_)`.
+- Добавлен evidence-pack `EVIDENCE/D007G_SAFE_OVERWRITE_SEMANTICS.md` с exact commands/raw outputs/exit codes и scenario-table (no-existing-file / existing-file / fail-before-commit / fail-after-move).
+
+## D-007g2 hard recovery semantics (новое)
+- Вынесен отдельный file-state helper `PDFFileStateOrchestrator` с throwing API для temp/backup/promote/recover/cleanup; best-effort `try?` удалён из критичного recovery/restore/backup-cleanup path.
+- При неполном восстановлении состояния (`recoverAfterFailedCommit`) теперь генерируется явная ошибка `PDFFileStateError.incompleteRecovery(...)` с деталями и backup path.
+- В `AppViewModel` recovery failures агрегируются и поднимаются как явная user-facing ошибка; post-commit backup cleanup failures больше не silent и выводятся в warning/info path.
+- Добавлен scenario-based evidence-pack `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md` с реальными файловыми сценариями (existing/no-existing, fail before move, fail after move, recovery success, recovery failure).
+
+## D-007g3 temp-leak + post-commit false-failure semantics (новое)
+- Закрыт temp leak до входа в transaction/recovery: temp PDF cleanup теперь выполняется для fail path до BEGIN (включая PDF generation fail и BEGIN fail), а не только для transaction-error ветки.
+- Убрана false-failure семантика после успешного COMMIT: post-commit `reloadAll()` ошибки переведены в warning/info path и не маркируют всю операцию как failure.
+- Для export/save flow сохранён явный warning path при post-commit backup cleanup issues (не silent).
+- Добавлен scenario-based evidence-pack `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md` (cases: generation fail before tx, begin fail, commit success + refresh fail, export success + post-commit warning).
+
 ## Важная оговорка
 - После D-014 в acceptance/release документах больше не используется optimistic `PASS`, если он не подкреплён runtime evidence.
 - Любой статус готовности теперь должен попадать только в одну явную категорию: `independently confirmed` / `repository-claimed` / `unconfirmed` / `blocked_env`.

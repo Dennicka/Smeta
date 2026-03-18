@@ -2,6 +2,23 @@
 import Foundation
 import AppKit
 
+enum BackupServiceError: LocalizedError {
+    case backupCancelled
+    case restoreCancelled
+    case restoreConfirmationDeclined
+
+    var errorDescription: String? {
+        switch self {
+        case .backupCancelled:
+            return "Пользователь отменил создание backup."
+        case .restoreCancelled:
+            return "Пользователь отменил выбор файла для restore."
+        case .restoreConfirmationDeclined:
+            return "Restore отменён на шаге подтверждения."
+        }
+    }
+}
+
 final class BackupService {
     private let db: SQLiteDatabase
 
@@ -11,22 +28,26 @@ final class BackupService {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = backupFileName()
         panel.allowedFileTypes = ["sqlite", "db"]
-        if panel.runModal() == .OK, let url = panel.url {
-            if FileManager.default.fileExists(atPath: url.path) {
-                try FileManager.default.removeItem(at: url)
-            }
-            try db.copyDatabase(to: url)
+        guard panel.runModal() == .OK, let url = panel.url else {
+            throw BackupServiceError.backupCancelled
         }
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        try db.copyDatabase(to: url)
     }
 
     func restoreViaDialog() throws {
         let panel = NSOpenPanel()
         panel.allowedFileTypes = ["sqlite", "db"]
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            guard confirmRestore(for: url) else { return }
-            try db.restoreDatabase(from: url)
+        guard panel.runModal() == .OK, let url = panel.url else {
+            throw BackupServiceError.restoreCancelled
         }
+        guard confirmRestore(for: url) else {
+            throw BackupServiceError.restoreConfirmationDeclined
+        }
+        try db.restoreDatabase(from: url)
     }
 
     func dataLocation() -> URL {
