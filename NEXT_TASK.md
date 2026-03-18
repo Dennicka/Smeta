@@ -1,24 +1,23 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-014 — очистка acceptance/release статусов от optimistic PASS без runtime evidence.
+D-015 — очистка release/archive состояния от build/output noise перед финализацией релизного пакета.
 
 ## Scope
-- Провести ревизию acceptance/release документов и убрать optimistic PASS, не подтверждённые runtime evidence.
-- Согласовать `ACCEPTANCE_CHECKLIST.md`, `FINAL_VERIFICATION_REPORT.md`, `CURRENT_STATE.md`, `DEFECT_BACKLOG.md` по единому evidence-based правилу.
-- Явно разделить статусы на: independently confirmed / repository-claimed / unconfirmed.
+- Зафиксировать deterministic clean-release checklist (что разрешено в артефактах, что обязательно удаляется).
+- Добавить/обновить verify-команду, которая проверяет чистоту release/archive состояния перед фиксацией.
+- Синхронизировать критерий чистоты в `DEFECT_BACKLOG.md` и релизных заметках.
 
 ## Out of scope
-- Любые изменения бизнес-логики и новые фичи.
-- Попытка «закрыть» macOS-only задачи без релевантной среды (`D-001..D-003`, D-010 AppKit proof).
-- Рефактор migration-кода (D-013 уже закрыт и подтверждён).
+- Любые новые фичи или изменения бизнес-логики.
+- Попытка закрыть macOS-only runtime задачи (`D-001..D-003`, D-002 AppKit e2e).
+- Повторная ревизия D-014 (уже закрыт и задокументирован).
 
 ## Acceptance criteria
-1. В acceptance/release документах нет PASS, основанных только на code-audit/assumption.
-2. Для спорных пунктов есть явная маркировка confirmed vs unconfirmed/repository-claimed.
-3. Все изменения статусов подтверждены ссылками на конкретные evidence-команды/outputs.
+1. Есть явный allowlist/denylist release-артефактов.
+2. Есть воспроизводимая verify-команда с raw output и exit code.
+3. `DEFECT_BACKLOG.md` и связанные release-docs согласованы по новому правилу clean-release.
 
 ## Evidence requirements
-- Exact commands + full raw outputs + exit codes.
-- Отдельный evidence-файл по D-014 audit/remarking pass.
-- Обновлённые `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md`.
+- Exact commands + raw outputs + exit codes.
+- Отдельный evidence-файл по D-015 clean-release pass.
