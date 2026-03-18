@@ -1,28 +1,30 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-После выполненного verification pass по Offert/Faktura закрыть остаток D-008: убрать hardcoded/demo document lines и перевести на repository-backed mapping layer документы Avtal, Kreditfaktura, ÄTA и Påminnelse.
+Defect Fix 3c — добить D-009 до `RESOLVED`: получить реальный runtime evidence для repository-level `finalizeDocumentWithSnapshot(...)` в окружении, где доступен модуль `SQLite3`.
 
 ## Scope
-- Найти demo/hardcoded line generation для `ContractEditorView`, `ExtraWorkView`, `RemindersView` и связанных helper/service path.
-- Перевести эти контуры на реальный document/project/estimate state через отдельный builder/mapper (без сборки строк во View).
-- При недостатке данных показывать только honest incomplete/empty state, без fake fallback.
-- Добавить/расширить автотесты mapping layer для новых типов документов.
-- Обновить `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md` по фактическому coverage.
+- Запустить `Scripts/verify_finalize_document_with_snapshot.swift` в валидном окружении (macOS или Linux с рабочим `SQLite3` module map).
+- Зафиксировать полный evidence pack (команды, raw output, exit code) и подтвердить:
+  - final number в persisted snapshot,
+  - finalized status в persisted snapshot,
+  - rollback при ошибке snapshotBuilder.
+- Подтвердить, что активный runtime path не использует удалённый legacy finalize API.
+- После успешного runtime evidence перевести D-009 из `PARTIAL` в `RESOLVED` и обновить memory files.
 
 ## Out of scope
-- Полный rewrite document subsystem.
-- macOS runtime/packaging задачи.
-- Новый продуктовый функционал.
+- D-010 export pipeline.
+- Packaging/macOS runtime релизные задачи.
+- Изменение налоговой математики (D-012).
+- Import/update flow (D-011).
 
 ## Acceptance criteria
-1. Avtal/Kreditfaktura/ÄTA/Påminnelse больше не используют hardcoded/demo lines.
-2. Все перечисленные типы строятся через repository-backed mapping layer вне View.
-3. При пустых/неполных данных нет fake content, есть явный incomplete-state.
-4. Есть тесты на mapping/totals для покрытых типов.
-5. D-008 может быть переведён в `RESOLVED` только при наличии code evidence по всем типам документов.
+1. `Scripts/verify_finalize_document_with_snapshot.swift` выполнен успешно в релевантной среде.
+2. Есть явный PASS по final number/finalized status/rollback checks.
+3. Есть grep/evidence, что legacy finalize path отсутствует в runtime usage.
+4. D-009 можно честно перевести в `RESOLVED`.
 
 ## Evidence requirements
-- Diff с изменениями только по релевантным document flow файлам + memory files.
-- Список команд проверок и их результаты.
-- Явный список документов, покрытых фиксом, и документов вне scope.
+- Exact commands + full raw outputs + exit codes.
+- Обновлённые `CURRENT_STATE.md`, `DEFECT_BACKLOG.md`, `NEXT_TASK.md`.
+- Обновлённый `EVIDENCE/D009_REPOSITORY_FINALIZATION.md` с итоговым вердиктом.
