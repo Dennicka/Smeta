@@ -85,56 +85,56 @@ final class AppRepository {
         }
     }
 
-    func projects() throws -> [Project] { try fetch("SELECT id,client_id,property_id,name,speed_profile_id,created_at FROM projects ORDER BY id DESC") { s in
-        Project(id: sqlite3_column_int64(s,0), clientId: sqlite3_column_int64(s,1), propertyId: sqlite3_column_int64(s,2), name: text(s,3), speedProfileId: sqlite3_column_int64(s,4), createdAt: Date(timeIntervalSince1970: sqlite3_column_double(s,5)))
+    func projects() throws -> [Project] { try fetch("SELECT id,client_id,property_id,name,speed_profile_id,created_at,pricing_mode,is_draft FROM projects ORDER BY id DESC") { s in
+        Project(id: sqlite3_column_int64(s,0), clientId: sqlite3_column_int64(s,1), propertyId: sqlite3_column_int64(s,2), name: text(s,3), speedProfileId: sqlite3_column_int64(s,4), createdAt: Date(timeIntervalSince1970: sqlite3_column_double(s,5)), pricingMode: text(s,6), isDraft: sqlite3_column_int(s,7) == 1)
     }}
     func insertProject(_ p: Project) throws -> Int64 {
-        try db.withStatement("INSERT INTO projects (client_id,property_id,name,speed_profile_id,created_at) VALUES (?,?,?,?,?)") { s in
-            sqlite3_bind_int64(s,1,p.clientId); sqlite3_bind_int64(s,2,p.propertyId); bind(s,3,p.name); sqlite3_bind_int64(s,4,p.speedProfileId); sqlite3_bind_double(s,5,p.createdAt.timeIntervalSince1970); try step(s)
+        try db.withStatement("INSERT INTO projects (client_id,property_id,name,speed_profile_id,created_at,pricing_mode,is_draft) VALUES (?,?,?,?,?,?,?)") { s in
+            sqlite3_bind_int64(s,1,p.clientId); sqlite3_bind_int64(s,2,p.propertyId); bind(s,3,p.name); sqlite3_bind_int64(s,4,p.speedProfileId); sqlite3_bind_double(s,5,p.createdAt.timeIntervalSince1970); bind(s,6,p.pricingMode); sqlite3_bind_int(s,7,p.isDraft ? 1 : 0); try step(s)
         }
         return db.lastInsertedRowID()
     }
 
     func rooms(projectId: Int64? = nil) throws -> [Room] {
-        let sql = projectId == nil ? "SELECT id,project_id,name,area,height FROM rooms ORDER BY id DESC" : "SELECT id,project_id,name,area,height FROM rooms WHERE project_id=? ORDER BY id DESC"
+        let sql = projectId == nil ? "SELECT id,project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id FROM rooms ORDER BY id DESC" : "SELECT id,project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id FROM rooms WHERE project_id=? ORDER BY id DESC"
         return try fetchWithBind(sql, bindValue: projectId) { s in
-            Room(id: sqlite3_column_int64(s,0), projectId: sqlite3_column_int64(s,1), name: text(s,2), area: sqlite3_column_double(s,3), height: sqlite3_column_double(s,4))
+            Room(id: sqlite3_column_int64(s,0), projectId: sqlite3_column_int64(s,1), name: text(s,2), area: sqlite3_column_double(s,3), height: sqlite3_column_double(s,4), roomType: text(s,5), length: sqlite3_column_double(s,6), width: sqlite3_column_double(s,7), ceilingArea: sqlite3_column_double(s,8), wallAreaAuto: sqlite3_column_double(s,9), wallAreaManualAdjustment: sqlite3_column_double(s,10), surfaceCondition: text(s,11), notes: text(s,12), photoPath: text(s,13), roomTemplateId: nullableInt64(s,14))
         }
     }
     func insertRoom(_ room: Room) throws -> Int64 {
-        try db.withStatement("INSERT INTO rooms (project_id,name,area,height) VALUES (?,?,?,?)") { s in
-            sqlite3_bind_int64(s,1,room.projectId); bind(s,2,room.name); sqlite3_bind_double(s,3,room.area); sqlite3_bind_double(s,4,room.height); try step(s)
+        try db.withStatement("INSERT INTO rooms (project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)") { s in
+            sqlite3_bind_int64(s,1,room.projectId); bind(s,2,room.name); sqlite3_bind_double(s,3,room.area); sqlite3_bind_double(s,4,room.height); bind(s,5,room.roomType); sqlite3_bind_double(s,6,room.length); sqlite3_bind_double(s,7,room.width); sqlite3_bind_double(s,8,room.ceilingArea); sqlite3_bind_double(s,9,room.wallAreaAuto); sqlite3_bind_double(s,10,room.wallAreaManualAdjustment); bind(s,11,room.surfaceCondition); bind(s,12,room.notes); bind(s,13,room.photoPath); if let id = room.roomTemplateId { sqlite3_bind_int64(s,14,id) } else { sqlite3_bind_null(s,14) }; try step(s)
         }
         return db.lastInsertedRowID()
     }
 
-    func workItems() throws -> [WorkCatalogItem] { try fetch("SELECT id,name,unit,base_rate_hour,base_price,swedish_name,sort_order FROM work_catalog ORDER BY sort_order,id") { s in
-        WorkCatalogItem(id: sqlite3_column_int64(s,0), name: text(s,1), unit: text(s,2), baseRatePerUnitHour: sqlite3_column_double(s,3), basePrice: sqlite3_column_double(s,4), swedishName: text(s,5), sortOrder: Int(sqlite3_column_int(s,6)))
+    func workItems() throws -> [WorkCatalogItem] { try fetch("SELECT id,name,unit,base_rate_hour,base_price,swedish_name,sort_order,category_id,subcategory_id,description,is_active,include_standard_offer,rot_eligible,applicability,base_purchase_price,hourly_price,slow_speed,medium_speed,fast_speed,complexity_coefficient,height_coefficient,condition_coefficient,urgency_coefficient,accessibility_coefficient,additional_labor_hours,additional_material_usage FROM work_catalog ORDER BY sort_order,id") { s in
+        WorkCatalogItem(id: sqlite3_column_int64(s,0), name: text(s,1), unit: text(s,2), baseRatePerUnitHour: sqlite3_column_double(s,3), basePrice: sqlite3_column_double(s,4), swedishName: text(s,5), sortOrder: Int(sqlite3_column_int(s,6)), categoryId: nullableInt64(s,7), subcategoryId: nullableInt64(s,8), description: text(s,9), isActive: sqlite3_column_int(s,10) == 1, includeInStandardOffer: sqlite3_column_int(s,11) == 1, rotEligible: sqlite3_column_int(s,12) == 1, applicability: text(s,13), basePurchasePrice: sqlite3_column_double(s,14), hourlyPrice: sqlite3_column_double(s,15), slowSpeed: sqlite3_column_double(s,16), mediumSpeed: sqlite3_column_double(s,17), fastSpeed: sqlite3_column_double(s,18), complexityCoefficient: sqlite3_column_double(s,19), heightCoefficient: sqlite3_column_double(s,20), conditionCoefficient: sqlite3_column_double(s,21), urgencyCoefficient: sqlite3_column_double(s,22), accessibilityCoefficient: sqlite3_column_double(s,23), additionalLaborHours: sqlite3_column_double(s,24), additionalMaterialUsage: sqlite3_column_double(s,25))
     }}
     func insertWorkItem(_ item: WorkCatalogItem) throws -> Int64 {
-        try db.withStatement("INSERT INTO work_catalog (name,unit,base_rate_hour,base_price,swedish_name,sort_order) VALUES (?,?,?,?,?,?)") { s in
-            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.baseRatePerUnitHour); sqlite3_bind_double(s,4,item.basePrice); bind(s,5,item.swedishName); sqlite3_bind_int(s,6,Int32(item.sortOrder)); try step(s)
+        try db.withStatement("INSERT INTO work_catalog (name,unit,base_rate_hour,base_price,swedish_name,sort_order,category_id,subcategory_id,description,is_active,include_standard_offer,rot_eligible,applicability,base_purchase_price,hourly_price,slow_speed,medium_speed,fast_speed,complexity_coefficient,height_coefficient,condition_coefficient,urgency_coefficient,accessibility_coefficient,additional_labor_hours,additional_material_usage) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)") { s in
+            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.baseRatePerUnitHour); sqlite3_bind_double(s,4,item.basePrice); bind(s,5,item.swedishName); sqlite3_bind_int(s,6,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,7,id) } else { sqlite3_bind_null(s,7) }; if let id = item.subcategoryId { sqlite3_bind_int64(s,8,id) } else { sqlite3_bind_null(s,8) }; bind(s,9,item.description); sqlite3_bind_int(s,10,item.isActive ? 1 : 0); sqlite3_bind_int(s,11,item.includeInStandardOffer ? 1 : 0); sqlite3_bind_int(s,12,item.rotEligible ? 1 : 0); bind(s,13,item.applicability); sqlite3_bind_double(s,14,item.basePurchasePrice); sqlite3_bind_double(s,15,item.hourlyPrice); sqlite3_bind_double(s,16,item.slowSpeed); sqlite3_bind_double(s,17,item.mediumSpeed); sqlite3_bind_double(s,18,item.fastSpeed); sqlite3_bind_double(s,19,item.complexityCoefficient); sqlite3_bind_double(s,20,item.heightCoefficient); sqlite3_bind_double(s,21,item.conditionCoefficient); sqlite3_bind_double(s,22,item.urgencyCoefficient); sqlite3_bind_double(s,23,item.accessibilityCoefficient); sqlite3_bind_double(s,24,item.additionalLaborHours); sqlite3_bind_double(s,25,item.additionalMaterialUsage); try step(s)
         }
         return db.lastInsertedRowID()
     }
     func updateWorkItem(_ item: WorkCatalogItem) throws {
-        try db.withStatement("UPDATE work_catalog SET name=?,unit=?,base_rate_hour=?,base_price=?,swedish_name=?,sort_order=? WHERE id=?") { s in
-            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.baseRatePerUnitHour); sqlite3_bind_double(s,4,item.basePrice); bind(s,5,item.swedishName); sqlite3_bind_int(s,6,Int32(item.sortOrder)); sqlite3_bind_int64(s,7,item.id); try step(s)
+        try db.withStatement("UPDATE work_catalog SET name=?,unit=?,base_rate_hour=?,base_price=?,swedish_name=?,sort_order=?,category_id=?,subcategory_id=?,description=?,is_active=?,include_standard_offer=?,rot_eligible=?,applicability=?,base_purchase_price=?,hourly_price=?,slow_speed=?,medium_speed=?,fast_speed=?,complexity_coefficient=?,height_coefficient=?,condition_coefficient=?,urgency_coefficient=?,accessibility_coefficient=?,additional_labor_hours=?,additional_material_usage=? WHERE id=?") { s in
+            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.baseRatePerUnitHour); sqlite3_bind_double(s,4,item.basePrice); bind(s,5,item.swedishName); sqlite3_bind_int(s,6,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,7,id) } else { sqlite3_bind_null(s,7) }; if let id = item.subcategoryId { sqlite3_bind_int64(s,8,id) } else { sqlite3_bind_null(s,8) }; bind(s,9,item.description); sqlite3_bind_int(s,10,item.isActive ? 1 : 0); sqlite3_bind_int(s,11,item.includeInStandardOffer ? 1 : 0); sqlite3_bind_int(s,12,item.rotEligible ? 1 : 0); bind(s,13,item.applicability); sqlite3_bind_double(s,14,item.basePurchasePrice); sqlite3_bind_double(s,15,item.hourlyPrice); sqlite3_bind_double(s,16,item.slowSpeed); sqlite3_bind_double(s,17,item.mediumSpeed); sqlite3_bind_double(s,18,item.fastSpeed); sqlite3_bind_double(s,19,item.complexityCoefficient); sqlite3_bind_double(s,20,item.heightCoefficient); sqlite3_bind_double(s,21,item.conditionCoefficient); sqlite3_bind_double(s,22,item.urgencyCoefficient); sqlite3_bind_double(s,23,item.accessibilityCoefficient); sqlite3_bind_double(s,24,item.additionalLaborHours); sqlite3_bind_double(s,25,item.additionalMaterialUsage); sqlite3_bind_int64(s,26,item.id); try step(s)
         }
     }
 
-    func materialItems() throws -> [MaterialCatalogItem] { try fetch("SELECT id,name,unit,base_price,swedish_name,sort_order FROM material_catalog ORDER BY sort_order,id") { s in
-        MaterialCatalogItem(id: sqlite3_column_int64(s,0), name: text(s,1), unit: text(s,2), basePrice: sqlite3_column_double(s,3), swedishName: text(s,4), sortOrder: Int(sqlite3_column_int(s,5)))
+    func materialItems() throws -> [MaterialCatalogItem] { try fetch("SELECT id,name,unit,base_price,swedish_name,sort_order,category_id,purchase_price,markup_percent,supplier_id,sku,usage_per_work_unit,package_size,stock,comment,is_active FROM material_catalog ORDER BY sort_order,id") { s in
+        MaterialCatalogItem(id: sqlite3_column_int64(s,0), name: text(s,1), unit: text(s,2), basePrice: sqlite3_column_double(s,3), swedishName: text(s,4), sortOrder: Int(sqlite3_column_int(s,5)), categoryId: nullableInt64(s,6), purchasePrice: sqlite3_column_double(s,7), markupPercent: sqlite3_column_double(s,8), supplierId: nullableInt64(s,9), sku: text(s,10), usagePerWorkUnit: sqlite3_column_double(s,11), packageSize: sqlite3_column_double(s,12), stock: sqlite3_column_double(s,13), comment: text(s,14), isActive: sqlite3_column_int(s,15) == 1)
     }}
     func insertMaterialItem(_ item: MaterialCatalogItem) throws -> Int64 {
-        try db.withStatement("INSERT INTO material_catalog (name,unit,base_price,swedish_name,sort_order) VALUES (?,?,?,?,?)") { s in
-            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.basePrice); bind(s,4,item.swedishName); sqlite3_bind_int(s,5,Int32(item.sortOrder)); try step(s)
+        try db.withStatement("INSERT INTO material_catalog (name,unit,base_price,swedish_name,sort_order,category_id,purchase_price,markup_percent,supplier_id,sku,usage_per_work_unit,package_size,stock,comment,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)") { s in
+            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.basePrice); bind(s,4,item.swedishName); sqlite3_bind_int(s,5,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,6,id) } else { sqlite3_bind_null(s,6) }; sqlite3_bind_double(s,7,item.purchasePrice); sqlite3_bind_double(s,8,item.markupPercent); if let id = item.supplierId { sqlite3_bind_int64(s,9,id) } else { sqlite3_bind_null(s,9) }; bind(s,10,item.sku); sqlite3_bind_double(s,11,item.usagePerWorkUnit); sqlite3_bind_double(s,12,item.packageSize); sqlite3_bind_double(s,13,item.stock); bind(s,14,item.comment); sqlite3_bind_int(s,15,item.isActive ? 1 : 0); try step(s)
         }
         return db.lastInsertedRowID()
     }
     func updateMaterialItem(_ item: MaterialCatalogItem) throws {
-        try db.withStatement("UPDATE material_catalog SET name=?,unit=?,base_price=?,swedish_name=?,sort_order=? WHERE id=?") { s in
-            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.basePrice); bind(s,4,item.swedishName); sqlite3_bind_int(s,5,Int32(item.sortOrder)); sqlite3_bind_int64(s,6,item.id); try step(s)
+        try db.withStatement("UPDATE material_catalog SET name=?,unit=?,base_price=?,swedish_name=?,sort_order=?,category_id=?,purchase_price=?,markup_percent=?,supplier_id=?,sku=?,usage_per_work_unit=?,package_size=?,stock=?,comment=?,is_active=? WHERE id=?") { s in
+            bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.basePrice); bind(s,4,item.swedishName); sqlite3_bind_int(s,5,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,6,id) } else { sqlite3_bind_null(s,6) }; sqlite3_bind_double(s,7,item.purchasePrice); sqlite3_bind_double(s,8,item.markupPercent); if let id = item.supplierId { sqlite3_bind_int64(s,9,id) } else { sqlite3_bind_null(s,9) }; bind(s,10,item.sku); sqlite3_bind_double(s,11,item.usagePerWorkUnit); sqlite3_bind_double(s,12,item.packageSize); sqlite3_bind_double(s,13,item.stock); bind(s,14,item.comment); sqlite3_bind_int(s,15,item.isActive ? 1 : 0); sqlite3_bind_int64(s,16,item.id); try step(s)
         }
     }
 
@@ -190,6 +190,33 @@ final class AppRepository {
         }
     }
 
+
+    func surfaces(roomId: Int64) throws -> [Surface] {
+        try fetchWithBind("SELECT id,room_id,type,name,area,perimeter,is_custom,source,manual_adjustment FROM surfaces WHERE room_id=? ORDER BY id", bindValue: roomId) { s in
+            Surface(id: sqlite3_column_int64(s,0), roomId: sqlite3_column_int64(s,1), type: text(s,2), name: text(s,3), area: sqlite3_column_double(s,4), perimeter: sqlite3_column_double(s,5), isCustom: sqlite3_column_int(s,6) == 1, source: text(s,7), manualAdjustment: sqlite3_column_double(s,8))
+        }
+    }
+
+    func openings(roomId: Int64) throws -> [Opening] {
+        try fetchWithBind("SELECT id,room_id,surface_id,type,name,width,height,count,subtract_from_wall_area FROM openings WHERE room_id=? ORDER BY id", bindValue: roomId) { s in
+            Opening(id: sqlite3_column_int64(s,0), roomId: sqlite3_column_int64(s,1), surfaceId: nullableInt64(s,2), type: text(s,3), name: text(s,4), width: sqlite3_column_double(s,5), height: sqlite3_column_double(s,6), count: Int(sqlite3_column_int(s,7)), subtractFromWallArea: sqlite3_column_int(s,8) == 1)
+        }
+    }
+
+    func replaceSurfaces(roomId: Int64, surfaces: [Surface]) throws {
+        try db.withStatement("DELETE FROM surfaces WHERE room_id=?") { s in sqlite3_bind_int64(s,1,roomId); try step(s) }
+        for surface in surfaces {
+            try db.withStatement("INSERT INTO surfaces (room_id,type,name,area,perimeter,is_custom,source,manual_adjustment) VALUES (?,?,?,?,?,?,?,?)") { s in
+                sqlite3_bind_int64(s,1,roomId); bind(s,2,surface.type); bind(s,3,surface.name); sqlite3_bind_double(s,4,surface.area); sqlite3_bind_double(s,5,surface.perimeter); sqlite3_bind_int(s,6,surface.isCustom ? 1 : 0); bind(s,7,surface.source); sqlite3_bind_double(s,8,surface.manualAdjustment); try step(s)
+            }
+        }
+    }
+
+    func addOpening(_ opening: Opening) throws {
+        try db.withStatement("INSERT INTO openings (room_id,surface_id,type,name,width,height,count,subtract_from_wall_area) VALUES (?,?,?,?,?,?,?,?)") { s in
+            sqlite3_bind_int64(s,1,opening.roomId); if let sid = opening.surfaceId { sqlite3_bind_int64(s,2,sid) } else { sqlite3_bind_null(s,2) }; bind(s,3,opening.type); bind(s,4,opening.name); sqlite3_bind_double(s,5,opening.width); sqlite3_bind_double(s,6,opening.height); sqlite3_bind_int(s,7,Int32(opening.count)); sqlite3_bind_int(s,8,opening.subtractFromWallArea ? 1 : 0); try step(s)
+        }
+    }
     private func fetch<T>(_ sql: String, _ map: (OpaquePointer) -> T) throws -> [T] {
         var items: [T] = []
         try db.withStatement(sql) { s in

@@ -250,9 +250,216 @@ final class SQLiteDatabase {
             FOREIGN KEY(document_id) REFERENCES business_documents(id)
         );
 
+        CREATE TABLE IF NOT EXISTS room_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            room_type TEXT NOT NULL,
+            default_length REAL NOT NULL DEFAULT 0,
+            default_width REAL NOT NULL DEFAULT 0,
+            default_height REAL NOT NULL DEFAULT 2.7,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS surfaces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            area REAL NOT NULL DEFAULT 0,
+            perimeter REAL NOT NULL DEFAULT 0,
+            is_custom INTEGER NOT NULL DEFAULT 0,
+            source TEXT NOT NULL DEFAULT 'auto',
+            manual_adjustment REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY(room_id) REFERENCES rooms(id)
+        );
+        CREATE TABLE IF NOT EXISTS openings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            surface_id INTEGER,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            width REAL NOT NULL,
+            height REAL NOT NULL,
+            count INTEGER NOT NULL DEFAULT 1,
+            subtract_from_wall_area INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY(room_id) REFERENCES rooms(id),
+            FOREIGN KEY(surface_id) REFERENCES surfaces(id)
+        );
+        CREATE TABLE IF NOT EXISTS trim_elements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            length REAL NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            notes TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(room_id) REFERENCES rooms(id)
+        );
+        CREATE TABLE IF NOT EXISTS work_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS work_subcategories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(category_id) REFERENCES work_categories(id)
+        );
+        CREATE TABLE IF NOT EXISTS material_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS material_usage_norms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_item_id INTEGER NOT NULL,
+            material_item_id INTEGER NOT NULL,
+            usage_per_unit REAL NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(work_item_id) REFERENCES work_catalog(id),
+            FOREIGN KEY(material_item_id) REFERENCES material_catalog(id)
+        );
+        CREATE TABLE IF NOT EXISTS work_speed_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_item_id INTEGER NOT NULL,
+            surface_type TEXT NOT NULL DEFAULT 'wall',
+            slow REAL NOT NULL DEFAULT 0,
+            medium REAL NOT NULL DEFAULT 0,
+            fast REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY(work_item_id) REFERENCES work_catalog(id)
+        );
+        CREATE TABLE IF NOT EXISTS complexity_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            coefficient REAL NOT NULL,
+            enabled_by_default INTEGER NOT NULL DEFAULT 0,
+            applies_to_surface_type TEXT NOT NULL DEFAULT 'any'
+        );
+        CREATE TABLE IF NOT EXISTS surface_condition_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            coefficient REAL NOT NULL,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS estimate_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            estimate_id INTEGER NOT NULL,
+            version_name TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            changed_summary TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(estimate_id) REFERENCES estimates(id)
+        );
+        CREATE TABLE IF NOT EXISTS estimate_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            estimate_version_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            value REAL NOT NULL,
+            type TEXT NOT NULL,
+            FOREIGN KEY(estimate_version_id) REFERENCES estimate_versions(id)
+        );
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            contact TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS supplier_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_id INTEGER NOT NULL,
+            material_item_id INTEGER NOT NULL,
+            sku TEXT NOT NULL,
+            purchase_price REAL NOT NULL DEFAULT 0,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(supplier_id) REFERENCES suppliers(id),
+            FOREIGN KEY(material_item_id) REFERENCES material_catalog(id)
+        );
+        CREATE TABLE IF NOT EXISTS equipment_cost_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            cost_per_hour REAL NOT NULL,
+            applies_to_work_category_id INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS transport_cost_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            fixed_cost REAL NOT NULL,
+            cost_per_km REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS waste_disposal_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            cost_per_cubic_meter REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS default_project_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            pricing_mode TEXT NOT NULL,
+            speed_profile_id INTEGER NOT NULL,
+            notes TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(speed_profile_id) REFERENCES speed_profiles(id)
+        );
+        CREATE TABLE IF NOT EXISTS calculation_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            estimate_version_id INTEGER,
+            document_id INTEGER,
+            snapshot_json TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
+
         """)
 
         try? execute("ALTER TABLE projects ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'draft';")
+
+        try? execute("ALTER TABLE projects ADD COLUMN pricing_mode TEXT NOT NULL DEFAULT 'fixed_price';")
+        try? execute("ALTER TABLE projects ADD COLUMN is_draft INTEGER NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE properties ADD COLUMN object_type TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE properties ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE properties ADD COLUMN photo_path TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE properties ADD COLUMN total_area REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE properties ADD COLUMN access_level TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE properties ADD COLUMN internal_comment TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE rooms ADD COLUMN room_type TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE rooms ADD COLUMN length REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE rooms ADD COLUMN width REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE rooms ADD COLUMN ceiling_area REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE rooms ADD COLUMN wall_area_auto REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE rooms ADD COLUMN wall_area_manual_adjustment REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE rooms ADD COLUMN surface_condition TEXT NOT NULL DEFAULT 'standard';")
+        try? execute("ALTER TABLE rooms ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE rooms ADD COLUMN photo_path TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE rooms ADD COLUMN room_template_id INTEGER;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN category_id INTEGER;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN subcategory_id INTEGER;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN description TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN include_standard_offer INTEGER NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN rot_eligible INTEGER NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN applicability TEXT NOT NULL DEFAULT 'b2c,b2b';")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN base_purchase_price REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN hourly_price REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN slow_speed REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN medium_speed REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN fast_speed REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN complexity_coefficient REAL NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN height_coefficient REAL NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN condition_coefficient REAL NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN urgency_coefficient REAL NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN accessibility_coefficient REAL NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN additional_labor_hours REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE work_catalog ADD COLUMN additional_material_usage REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN category_id INTEGER;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN purchase_price REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN markup_percent REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN supplier_id INTEGER;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN sku TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN usage_per_work_unit REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN package_size REAL NOT NULL DEFAULT 1;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN stock REAL NOT NULL DEFAULT 0;")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN comment TEXT NOT NULL DEFAULT '';")
+        try? execute("ALTER TABLE material_catalog ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
     }
 
     func copyDatabase(to destination: URL) throws {
