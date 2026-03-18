@@ -3,6 +3,11 @@
 Дата: 2026-03-18 (UTC)
 Среда: Linux container (без macOS AppKit runtime)
 
+## Historical status note (2026-03-18)
+- Этот документ сохранён как **исторический этап D-007e** и содержит raw/code snippets на момент соответствующего шага.
+- Он **не является** актуальным raw-proof текущей orchestrator-based реализации.
+- Для актуального recovery/cleanup контракта и warning semantics используйте: `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md` и `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md`.
+
 ## Update note (D-007g2 sync)
 - После D-007g2 orchestration перенесён в `PDFFileStateOrchestrator`; актуальный throwing recovery/cleanup и integration path подтверждаются в `EVIDENCE/D007G2_HARD_RECOVERY_SEMANTICS.md`.
 - Этот файл сохраняется как исторический evidence для шага D-007e (введение temp+transaction+cleanup), но текущая canonical implementation для recovery semantics — orchestrator-based.

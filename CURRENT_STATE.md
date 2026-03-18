@@ -82,6 +82,13 @@
 - Для export/save flow сохранён явный warning path при post-commit backup cleanup issues (не silent).
 - Добавлен scenario-based evidence-pack `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md` (cases: generation fail before tx, begin fail, commit success + refresh fail, export success + post-commit warning).
 
+
+## D-007g4 evidence honesty / verifier alignment (новое)
+- `Scripts/verify_d007g3_semantics.swift` приведён в соответствие production semantics: C1 теперь проверяет cleanup **после фактического создания temp artifact**, а не synthetic fail до temp path.
+- C4 верификатора переведён на реальный post-commit warning path (success + warning), без искусственного throw/catch как финального failure.
+- `EVIDENCE/D007G3_TEMP_LEAK_AND_POST_COMMIT_SEMANTICS.md` синхронизирован с тем, что реально проверяется в runtime script.
+- В `EVIDENCE/D007E_ATOMIC_PDF_PERSISTENCE.md` и `EVIDENCE/D007G_SAFE_OVERWRITE_SEMANTICS.md` добавлены явные historical notes, чтобы не создавать ложное впечатление «свежего raw proof» для текущего orchestrator-based состояния.
+
 ## Важная оговорка
 - После D-014 в acceptance/release документах больше не используется optimistic `PASS`, если он не подкреплён runtime evidence.
 - Любой статус готовности теперь должен попадать только в одну явную категорию: `independently confirmed` / `repository-claimed` / `unconfirmed` / `blocked_env`.

@@ -1,4 +1,4 @@
-# D-007g3 — close temp-leak + post-commit false-failure semantics
+# D-007g3 — temp-leak + post-commit warning semantics (honest verifier alignment)
 
 Дата: 2026-03-18 (UTC)
 Среда: Linux container (без macOS AppKit runtime)
@@ -27,45 +27,38 @@ swift test
 Exit code: `0`
 Raw output (tail):
 ```text
-Test Suite 'All tests' passed at 2026-03-18 21:11:02.369
-    Executed 16 tests, with 0 failures (0 unexpected) in 0.036 (0.036) seconds
+Test Suite 'All tests' passed at 2026-03-18 21:36:38.155
+    Executed 16 tests, with 0 failures (0 unexpected) in 0.046 (0.046) seconds
 ```
-
-### Command 3 — AppViewModel code-path proof (Offert flow)
-```bash
-nl -ba Sources/SmetaApp/ViewModels/AppViewModel.swift | sed -n '230,330p'
-```
-Exit code: `0`
-
-### Command 4 — AppViewModel code-path proof (export flow)
-```bash
-nl -ba Sources/SmetaApp/ViewModels/AppViewModel.swift | sed -n '560,670p'
-```
-Exit code: `0`
 
 ## 2) Covered scenarios (required)
 
 | Case | What is validated | Result |
 |---|---|---|
-| C1 | PDF generation fails before transaction; temp cleanup still executed | PASS |
-| C2 | BEGIN transaction fails; temp cleanup still executed | PASS |
-| C3 | Commit succeeds but refresh fails; operation remains success with warning (no false failure) | PASS |
-| C4 | Export succeeds with post-commit issue path (backup cleanup warning branch) | PASS |
+| C1 | Temp artifact **already created** (`tempURL` write done), then pre-BEGIN failure occurs; cleanup removes temp artifact (no g3 temp leak). | PASS |
+| C2 | BEGIN transaction fails after temp generation; cleanup still removes temp artifact. | PASS |
+| C3 | Commit succeeds but refresh fails; operation remains success and returns warning (no synthetic failure). | PASS |
+| C4 | Commit succeeds but backup cleanup path warns; operation remains success + warning (post-commit warning semantics). | PASS |
 
-## 3) What changed in code
+## 3) What verifier now models (and what it does not)
 
-- `saveEstimateAndGenerateDocument()` и `exportDocumentPDF(_:)` теперь удаляют temp PDF не только в transaction-error ветке, но и в pre-transaction fail path (generation/BEGIN fail), через unified cleanup in outer catch.
-- Recovery (`ROLLBACK` + file restore) выполняется только если transaction реально началась (`beganTransaction`), чтобы pre-BEGIN fail path не пропускал cleanup.
-- Post-commit `reloadAll()` вынесен в warning-path: ошибка refresh больше не превращает успешно завершённую операцию в общий failure.
-- Post-commit backup cleanup failures остаются не-silent и показываются пользователю как warning/info.
+- `Scripts/verify_d007g3_semantics.swift` deliberately models orchestrator-centered flow:
+  - prepare temp;
+  - transactional promote + commit;
+  - post-commit cleanup/refresh warnings as **non-fatal** path.
+- C1 specifically fails **after temp creation** (`tempPreparedFail`) to validate real cleanup semantics instead of a pre-temp synthetic case.
+- C4 now checks **warning semantics** (success + warning) instead of old throw/catch fail shape.
+
+Not covered by this Linux runtime verifier:
+- реальный AppKit UX path (`NSSavePanel`, визуальное сообщение в macOS UI).
 
 ## 4) Runtime vs code-path vs blocked_env
 
 - **Runtime confirmed (Linux):** `verify_d007g3_semantics.swift` (C1..C4) + `swift test`.
-- **Code-path confirmed:** integration in `AppViewModel` around commit/reload/warning separation.
-- **Blocked_env:** macOS AppKit UI runtime verification (NSSavePanel + visual UX).
+- **Code-path alignment target:** `AppViewModel` orchestrator-based post-commit warning branches (`cleanupBackupAfterCommit`, `reloadAll`) without success-path conversion to fatal error.
+- **Blocked_env:** macOS AppKit runtime verification.
 
 ## Verdict
 
-- D-007g3 code-level fix: **выполнен**.
-- D-007 overall: **PARTIAL** до macOS runtime UX verification.
+- D-007g3 verifier semantics aligned with production intent: **да**.
+- D-007 общий статус: **PARTIAL** до macOS runtime UX verification.

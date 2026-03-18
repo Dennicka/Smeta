@@ -1,6 +1,14 @@
 import Foundation
 
-enum SimError: Error { case generationFail, beginFail, txFail, commitFail, refreshFail, backupCleanupFail }
+enum SimError: Error {
+    case generationFail
+    case tempPreparedFail
+    case beginFail
+    case txFail
+    case commitFail
+    case refreshFail
+    case backupCleanupFail
+}
 
 final class FakeDB {
     var failBegin = false
@@ -12,32 +20,37 @@ final class FakeDB {
         if failBegin { throw SimError.beginFail }
         began = true
     }
+
     func commit() throws {
         if failCommit { throw SimError.commitFail }
         committed = true
     }
+
     func rollback() throws { began = false }
 }
 
 struct RunResult {
     let committed: Bool
-    let warning: String?
+    let warnings: [String]
 }
 
-func simulate(orchestrator: PDFFileStateOrchestrator,
-              root: URL,
-              existingFinal: Bool,
-              failGeneration: Bool = false,
-              failBegin: Bool = false,
-              failTx: Bool = false,
-              failCommit: Bool = false,
-              failRefresh: Bool = false,
-              failBackupCleanup: Bool = false) throws -> RunResult {
-    let fm = FileManager.default
+func simulate(
+    orchestrator: PDFFileStateOrchestrator,
+    root: URL,
+    existingFinal: Bool,
+    failGeneration: Bool = false,
+    failAfterTempPrepared: Bool = false,
+    failBegin: Bool = false,
+    failTx: Bool = false,
+    failCommit: Bool = false,
+    failRefresh: Bool = false,
+    failBackupCleanup: Bool = false
+) throws -> RunResult {
     let finalURL = root.appendingPathComponent(UUID().uuidString).appendingPathExtension("pdf")
     if existingFinal {
         try "old".data(using: .utf8)!.write(to: finalURL)
     }
+
     let tempURL = orchestrator.temporaryPDFURL(near: finalURL, prefix: "g3")
     var didMove = false
     var backupURL: URL?
@@ -48,6 +61,7 @@ func simulate(orchestrator: PDFFileStateOrchestrator,
     do {
         if failGeneration { throw SimError.generationFail }
         try "new".data(using: .utf8)!.write(to: tempURL)
+        if failAfterTempPrepared { throw SimError.tempPreparedFail }
 
         try db.begin()
 
@@ -58,14 +72,27 @@ func simulate(orchestrator: PDFFileStateOrchestrator,
         try db.commit()
 
         try orchestrator.removeTemporaryFileIfPresent(at: tempURL)
-        if failBackupCleanup { throw SimError.backupCleanupFail }
-        try orchestrator.cleanupBackupAfterCommit(backupURL: backupURL)
 
-        if failRefresh { return RunResult(committed: true, warning: "refresh failed") }
-        return RunResult(committed: true, warning: nil)
+        var warnings: [String] = []
+        if let backupURL {
+            do {
+                if failBackupCleanup { throw SimError.backupCleanupFail }
+                try orchestrator.cleanupBackupAfterCommit(backupURL: backupURL)
+            } catch {
+                warnings.append("backup cleanup failed")
+            }
+        }
+
+        if failRefresh {
+            warnings.append("refresh failed")
+        }
+
+        return RunResult(committed: true, warnings: warnings)
     } catch {
         if db.began && !db.committed { try? db.rollback() }
-        if db.began { try? orchestrator.recoverAfterFailedCommit(finalURL: finalURL, backupURL: backupURL, didPromote: didMove) }
+        if db.began {
+            try? orchestrator.recoverAfterFailedCommit(finalURL: finalURL, backupURL: backupURL, didPromote: didMove)
+        }
         try? orchestrator.removeTemporaryFileIfPresent(at: tempURL)
         throw error
     }
@@ -82,32 +109,37 @@ struct Main {
         let orchestrator = PDFFileStateOrchestrator(manager: fm)
         var passes: [String] = []
 
-        // 1) PDF generation fails before transaction -> no temp leak
+        // 1) Temp artifact created, then pre-BEGIN fail -> temp must be cleaned
         do {
-            _ = try simulate(orchestrator: orchestrator, root: root, existingFinal: false, failGeneration: true)
-            throw SimError.generationFail
-        } catch {
+            _ = try simulate(orchestrator: orchestrator, root: root, existingFinal: false, failAfterTempPrepared: true)
+            throw SimError.tempPreparedFail
+        } catch SimError.tempPreparedFail {
             let leftovers = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
-            if leftovers.allSatisfy({ !$0.lastPathComponent.contains("g3-") }) { passes.append("C1 PASS") }
-        }
+            if leftovers.allSatisfy({ !$0.lastPathComponent.contains("g3-") }) {
+                passes.append("C1 PASS")
+            }
+        } catch {}
 
-        // 2) BEGIN fails -> no temp leak
+        // 2) BEGIN fails after temp generation -> no temp leak
         do {
             _ = try simulate(orchestrator: orchestrator, root: root, existingFinal: false, failBegin: true)
             throw SimError.beginFail
         } catch {
             let leftovers = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
-            if leftovers.allSatisfy({ !$0.lastPathComponent.contains("g3-") }) { passes.append("C2 PASS") }
+            if leftovers.allSatisfy({ !$0.lastPathComponent.contains("g3-") }) {
+                passes.append("C2 PASS")
+            }
         }
 
         // 3) commit succeeds but refresh fails -> operation success with warning
         let r3 = try simulate(orchestrator: orchestrator, root: root, existingFinal: true, failRefresh: true)
-        if r3.committed && r3.warning == "refresh failed" { passes.append("C3 PASS") }
+        if r3.committed && r3.warnings.contains("refresh failed") {
+            passes.append("C3 PASS")
+        }
 
-        // 4) export-like success with backup cleanup warning
-        do {
-            _ = try simulate(orchestrator: orchestrator, root: root, existingFinal: true, failBackupCleanup: true)
-        } catch {
+        // 4) commit succeeds but backup cleanup warns -> operation success with warning
+        let r4 = try simulate(orchestrator: orchestrator, root: root, existingFinal: true, failBackupCleanup: true)
+        if r4.committed && r4.warnings.contains("backup cleanup failed") {
             passes.append("C4 PASS")
         }
 
