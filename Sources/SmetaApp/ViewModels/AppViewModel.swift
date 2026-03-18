@@ -302,6 +302,86 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func createAvtalDraftFromSelectedProject() {
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект для создания Avtal"
+            return
+        }
+        do {
+            let context = try loadDocumentBuildContext(projectId: project.id)
+            switch documentDraftBuilder.buildAvtal(context: context, title: "Avtal \(project.name)") {
+            case .success(let payload):
+                try persistDraftDocument(payload: payload)
+                infoMessage = "Черновик Avtal создан из финализированной Offert"
+                try reloadAll()
+            case .incomplete(let reason):
+                errorMessage = reason
+            }
+        } catch {
+            errorMessage = "Не удалось создать Avtal: \(error.localizedDescription)"
+        }
+    }
+
+    func createKreditfakturaDraftFromSelectedProject() {
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект для создания Kreditfaktura"
+            return
+        }
+        do {
+            let context = try loadDocumentBuildContext(projectId: project.id)
+            switch documentDraftBuilder.buildKreditfaktura(context: context, title: "Kreditfaktura \(project.name)") {
+            case .success(let payload):
+                try persistDraftDocument(payload: payload)
+                infoMessage = "Черновик Kreditfaktura создан из финализированной Faktura"
+                try reloadAll()
+            case .incomplete(let reason):
+                errorMessage = reason
+            }
+        } catch {
+            errorMessage = "Не удалось создать Kreditfaktura: \(error.localizedDescription)"
+        }
+    }
+
+    func createAtaDraftFromSelectedProject() {
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект для создания ÄTA"
+            return
+        }
+        do {
+            let context = try loadDocumentBuildContext(projectId: project.id)
+            switch documentDraftBuilder.buildAta(context: context, title: "ÄTA \(project.name)") {
+            case .success(let payload):
+                try persistDraftDocument(payload: payload)
+                infoMessage = "Черновик ÄTA создан из данных проекта"
+                try reloadAll()
+            case .incomplete(let reason):
+                errorMessage = reason
+            }
+        } catch {
+            errorMessage = "Не удалось создать ÄTA: \(error.localizedDescription)"
+        }
+    }
+
+    func createPaminnelseDraftFromSelectedProject() {
+        guard let project = selectedProject else {
+            errorMessage = "Выберите проект для создания Påminnelse"
+            return
+        }
+        do {
+            let context = try loadDocumentBuildContext(projectId: project.id)
+            switch documentDraftBuilder.buildPaminnelse(context: context, title: "Påminnelse \(project.name)") {
+            case .success(let payload):
+                try persistDraftDocument(payload: payload)
+                infoMessage = "Черновик Påminnelse создан из данных задолженности"
+                try reloadAll()
+            case .incomplete(let reason):
+                errorMessage = reason
+            }
+        } catch {
+            errorMessage = "Не удалось создать Påminnelse: \(error.localizedDescription)"
+        }
+    }
+
     private func loadDocumentBuildContext(projectId: Int64) throws -> DocumentBuildContext {
         let company = try repository.companies().first
         let project = projects.first(where: { $0.id == projectId }) ?? try repository.projects().first(where: { $0.id == projectId })
@@ -310,6 +390,10 @@ final class AppViewModel: ObservableObject {
         }
         let estimate = try repository.estimates(projectId: projectId).first
         let estimateLines = estimate.map { try repository.estimateLines(estimateId: $0.id) } ?? []
+        let projectDocuments = try repository.businessDocuments().filter { $0.projectId == projectId }
+        let projectDocumentLines = try Dictionary(uniqueKeysWithValues: projectDocuments.map { doc in
+            (doc.id, try repository.businessDocumentLines(documentId: doc.id))
+        })
         let worksById = Dictionary(uniqueKeysWithValues: works.map { ($0.id, $0) })
         let materialsById = Dictionary(uniqueKeysWithValues: materials.map { ($0.id, $0) })
         return DocumentBuildContext(
@@ -319,7 +403,9 @@ final class AppViewModel: ObservableObject {
             estimate: estimate,
             estimateLines: estimateLines,
             workItemsById: worksById,
-            materialItemsById: materialsById
+            materialItemsById: materialsById,
+            businessDocuments: projectDocuments,
+            businessDocumentLinesByDocumentId: projectDocumentLines
         )
     }
 
@@ -346,7 +432,7 @@ final class AppViewModel: ObservableObject {
             totalAmount: payload.totalAmount,
             paidAmount: 0,
             balanceDue: payload.totalAmount,
-            relatedDocumentId: nil,
+            relatedDocumentId: payload.relatedDocumentId,
             notes: payload.notes
         )
         _ = try repository.createBusinessDocument(doc, lines: payload.lines)

@@ -26,7 +26,12 @@ struct ContractEditorView: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text("Contract editor").font(.largeTitle).bold()
-            Text("Создайте avtal на основе финализированной offert в Documents.")
+            Text("Avtal строится только из финализированной Offert текущего проекта.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+            Button("Создать Avtal draft") {
+                vm.createAvtalDraftFromSelectedProject()
+            }
             List(vm.businessDocuments.filter { $0.type == DocumentType.offert.rawValue || $0.type == DocumentType.avtal.rawValue }) { doc in
                 Text("\(doc.type.uppercased()) \(doc.number.isEmpty ? "DRAFT" : doc.number) — \(doc.title)")
             }
@@ -85,10 +90,11 @@ struct ExtraWorkView: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text("Extra work / ÄTA").font(.largeTitle).bold()
+            Text("ÄTA строится из repository-backed estimate/project данных.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
             Button("Создать ÄTA") {
-                guard let project = vm.selectedProject else { return }
-                let lines = [BusinessDocumentLine(id: 0, documentId: 0, lineType: "other", description: "ÄTA extra spackling", quantity: 1, unit: "st", unitPrice: 3000, vatRate: 0.25, isRotEligible: false, total: 3000)]
-                vm.createDraftDocument(type: .ata, projectId: project.id, title: "ÄTA \(project.name)", customerType: .b2c, taxMode: .normal, lines: lines)
+                vm.createAtaDraftFromSelectedProject()
             }
         }
     }
@@ -99,10 +105,14 @@ struct RemindersView: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text("Reminders").font(.largeTitle).bold()
+            Text("Påminnelse строится только из фактической задолженности по Faktura.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
             Button("Создать Påminnelse по первой faktura") {
-                guard let invoice = vm.businessDocuments.first(where: { $0.type == DocumentType.faktura.rawValue }) else { return }
-                let lines = [BusinessDocumentLine(id: 0, documentId: 0, lineType: "other", description: "Påminnelse för \(invoice.number)", quantity: 1, unit: "st", unitPrice: invoice.balanceDue, vatRate: 0, isRotEligible: false, total: invoice.balanceDue)]
-                vm.createDraftDocument(type: .paminnelse, projectId: invoice.projectId, title: "Påminnelse \(invoice.number)", customerType: .b2b, taxMode: .normal, lines: lines)
+                vm.createPaminnelseDraftFromSelectedProject()
+            }
+            Button("Создать Kreditfaktura по финализированной faktura") {
+                vm.createKreditfakturaDraftFromSelectedProject()
             }
         }
     }

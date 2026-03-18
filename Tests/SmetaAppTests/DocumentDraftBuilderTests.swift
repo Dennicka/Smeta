@@ -87,6 +87,147 @@ final class DocumentDraftBuilderTests: XCTestCase {
         XCTAssertTrue(fakturaReason.contains("inga rader"))
     }
 
+    func testBuildAvtalUsesFinalizedOffertLines() {
+        var context = makeContext()
+        let offert = BusinessDocument(
+            id: 77,
+            projectId: 3,
+            type: DocumentType.offert.rawValue,
+            status: DocumentStatus.finalized.rawValue,
+            number: "OFF-77",
+            title: "Offert kök",
+            issueDate: Date(timeIntervalSince1970: 1_700_000_000),
+            dueDate: nil,
+            customerType: CustomerType.b2c.rawValue,
+            taxMode: TaxMode.normal.rawValue,
+            currency: "SEK",
+            subtotalLabor: 6500,
+            subtotalMaterial: 1080,
+            subtotalOther: 0,
+            vatRate: 0.25,
+            vatAmount: 1895,
+            rotEligibleLabor: 6500,
+            rotReduction: 0,
+            totalAmount: 9475,
+            paidAmount: 0,
+            balanceDue: 9475,
+            relatedDocumentId: nil,
+            notes: ""
+        )
+        context.businessDocuments = [offert]
+        context.businessDocumentLinesByDocumentId = [
+            offert.id: [
+                BusinessDocumentLine(id: 1, documentId: offert.id, lineType: "labor", description: "Målning", quantity: 10, unit: "h", unitPrice: 650, vatRate: 0.25, isRotEligible: true, total: 6500)
+            ]
+        ]
+
+        let result = builder.buildAvtal(context: context, title: "Avtal kök")
+        guard case .success(let payload) = result else {
+            return XCTFail("Expected avtal success")
+        }
+        XCTAssertEqual(payload.type, .avtal)
+        XCTAssertEqual(payload.relatedDocumentId, offert.id)
+        XCTAssertEqual(payload.lines.count, 1)
+        XCTAssertEqual(payload.lines[0].description, "Målning")
+    }
+
+    func testBuildKreditfakturaUsesFinalizedInvoiceAndNegativeLines() {
+        var context = makeContext()
+        let faktura = BusinessDocument(
+            id: 88,
+            projectId: 3,
+            type: DocumentType.faktura.rawValue,
+            status: DocumentStatus.finalized.rawValue,
+            number: "FAK-88",
+            title: "Faktura kök",
+            issueDate: Date(timeIntervalSince1970: 1_700_100_000),
+            dueDate: nil,
+            customerType: CustomerType.b2c.rawValue,
+            taxMode: TaxMode.normal.rawValue,
+            currency: "SEK",
+            subtotalLabor: 6500,
+            subtotalMaterial: 0,
+            subtotalOther: 0,
+            vatRate: 0.25,
+            vatAmount: 1625,
+            rotEligibleLabor: 0,
+            rotReduction: 0,
+            totalAmount: 8125,
+            paidAmount: 0,
+            balanceDue: 8125,
+            relatedDocumentId: nil,
+            notes: ""
+        )
+        context.businessDocuments = [faktura]
+        context.businessDocumentLinesByDocumentId = [
+            faktura.id: [
+                BusinessDocumentLine(id: 1, documentId: faktura.id, lineType: "labor", description: "Målning", quantity: 10, unit: "h", unitPrice: 650, vatRate: 0.25, isRotEligible: true, total: 6500)
+            ]
+        ]
+
+        let result = builder.buildKreditfaktura(context: context, title: "")
+        guard case .success(let payload) = result else {
+            return XCTFail("Expected kreditfaktura success")
+        }
+        XCTAssertEqual(payload.type, .kreditfaktura)
+        XCTAssertEqual(payload.relatedDocumentId, faktura.id)
+        XCTAssertEqual(payload.lines[0].unitPrice, -650)
+        XCTAssertEqual(payload.lines[0].total, -6500)
+        XCTAssertLessThan(payload.totalAmount, 0)
+    }
+
+    func testBuildAtaUsesEstimateDataWithoutManualLines() {
+        let context = makeContext()
+        let result = builder.buildAta(context: context, title: "")
+
+        guard case .success(let payload) = result else {
+            return XCTFail("Expected ata success")
+        }
+        XCTAssertEqual(payload.type, .ata)
+        XCTAssertEqual(payload.lines.count, 2)
+        XCTAssertTrue(payload.title.contains("ÄTA"))
+    }
+
+    func testBuildPaminnelseUsesOutstandingInvoiceBalance() {
+        var context = makeContext()
+        let faktura = BusinessDocument(
+            id: 99,
+            projectId: 3,
+            type: DocumentType.faktura.rawValue,
+            status: DocumentStatus.finalized.rawValue,
+            number: "FAK-99",
+            title: "Faktura kök",
+            issueDate: Date(timeIntervalSince1970: 1_700_200_000),
+            dueDate: nil,
+            customerType: CustomerType.b2b.rawValue,
+            taxMode: TaxMode.normal.rawValue,
+            currency: "SEK",
+            subtotalLabor: 0,
+            subtotalMaterial: 0,
+            subtotalOther: 0,
+            vatRate: 0,
+            vatAmount: 0,
+            rotEligibleLabor: 0,
+            rotReduction: 0,
+            totalAmount: 3000,
+            paidAmount: 0,
+            balanceDue: 3000,
+            relatedDocumentId: nil,
+            notes: ""
+        )
+        context.businessDocuments = [faktura]
+
+        let result = builder.buildPaminnelse(context: context, title: "")
+        guard case .success(let payload) = result else {
+            return XCTFail("Expected paminnelse success")
+        }
+        XCTAssertEqual(payload.type, .paminnelse)
+        XCTAssertEqual(payload.relatedDocumentId, faktura.id)
+        XCTAssertEqual(payload.lines.count, 1)
+        XCTAssertEqual(payload.lines[0].total, 3000)
+        XCTAssertEqual(payload.vatRate, 0)
+    }
+
     private func makeContext() -> DocumentBuildContext {
         let work = WorkCatalogItem(
             id: 100,

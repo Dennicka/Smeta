@@ -20,6 +20,8 @@
 - Для D-010 внедрён единый export payload pipeline `DocumentExportPipeline` (в `SmetaApp` и `SmetaCore`): для Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse контент берётся только из full snapshot (если есть) или из repository document+lines, без demo/fake fallback; при отсутствии строк возвращается явная ошибка `missingLines`.
 - В `AppViewModel` добавлен единый `exportDocumentPDF(...)` путь для пяти типов D-010 с вызовом `generateBusinessDocumentPDF(...)` и `export_logs` записью `business_document_pdf`.
 - Добавлен evidence-проход `Scripts/verify_document_export_pipeline.swift` и `EVIDENCE/D010_EXPORT_PIPELINE.md`: service-level runtime PASS для всех 5 типов в Linux, но AppKit PDF e2e (SavePanel/UI runtime) остаётся неподтверждённым вне macOS.
+- Для D-008 закрыт остаток generation contour по Avtal/Kreditfaktura/ÄTA/Påminnelse: view-level demo/manual строки удалены; generation вынесен в repository-backed `DocumentDraftBuilder` методы (`buildAvtal/buildKreditfaktura/buildAta/buildPaminnelse`) с единым context loader (`businessDocuments` + `businessDocumentLinesByDocumentId`) и честным `.incomplete(...)` при нехватке данных.
+- Добавлен отдельный runtime evidence pass `Scripts/verify_generation_contour_d008.swift` + `EVIDENCE/D008_GENERATION_CONTOUR.md` с type-by-type mapping для Avtal/Kreditfaktura/ÄTA/Påminnelse.
 
 ## Repository-claimed / documented (внутренние заявления репозитория, не независимое подтверждение)
 - В `ACCEPTANCE_CHECKLIST.md` заявлено 43 PASS / 15 FAIL.
@@ -29,8 +31,7 @@
 
 ## Unconfirmed (требует независимого runtime evidence)
 - Любой macOS-only runtime: запуск `SmetaApp`, AppKit dialogs, Preview/Print, `.app`/`.dmg` packaging, clean install/restart lifecycle.
-- D-008 остаётся `PARTIAL`: end-to-end document generation contour для Avtal/Kreditfaktura/ÄTA/Påminnelse всё ещё не подтверждён как repository-backed/snapshot-backed без hardcoded/demo substitution во всех ветках.
-- D-010 partial export pipeline НЕ закрывает автоматически generation contour из D-008; export wiring и generation wiring должны считаться раздельно до отдельного доказательства по D-008.
+- D-010 partial export pipeline сам по себе не закрывает generation contour; D-008 закрыт только после отдельного доказательства (`EVIDENCE/D008_GENERATION_CONTOUR.md`), а не через экспортный контур.
 - Полный macOS runtime e2e для фактического PDF export (NSSavePanel/AppKit file flow) по Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse.
 - Реальная корректность CSV update/upsert semantics (а не имитация обновлений через дубликаты).
 - Конфигурируемость процентов расчёта через settings/rules вместо hardcoded magic values.
