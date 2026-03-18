@@ -40,10 +40,3 @@ Anna,anna@x.se
     print("SUMMARY: \(failures == 0 ? "PASS" : "FAIL")")
     return failures == 0 ? 0 : 1
 }
-
-@main
-struct Stage6CoreVerificationMain {
-    static func main() {
-        Foundation.exit(run())
-    }
-}

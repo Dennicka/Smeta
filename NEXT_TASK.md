@@ -1,20 +1,19 @@
 # NEXT_TASK
 
 ## Следующая инженерная задача (одна)
-D-005 — стабилизировать запуск `Scripts/stage6_core_verification.swift` прямой командой `swift Scripts/...` (убрать `@main`/scope mismatch и зафиксировать воспроизводимую команду).
+D-006 — снять partial-статус финальной Stage 6 готовности (перевести release verdict из «условно готово только для core logic freeze» к подтверждённому состоянию через недостающие runtime evidence).
 
 ## Scope
-- Найти реальную причину, почему текущая документированная команда запуска скрипта не проходит.
-- Исправить wiring запуска без ручной магии (либо через корректный script layout, либо через executable target/runner path).
-- Зафиксировать одну детерминированную команду запуска с raw output и exit code в evidence.
-- Синхронизировать статус в `DEFECT_BACKLOG.md`, `CURRENT_STATE.md`, `NEXT_TASK.md`.
+- Сфокусироваться на закрытии `PARTIAL` для D-006 через de-risk по оставшимся high-impact acceptance gap'ам.
+- Подготовить последовательный план по `blocked_env`/macOS-only подтверждениям для путей, которые не могут быть закрыты в Linux.
+- Синхронизировать release-вердикт в `FINAL_VERIFICATION_REPORT.md`, `ACCEPTANCE_CHECKLIST.md`, `CURRENT_STATE.md` после появления новых evidence.
 
 ## Out of scope
 - Revert/reset/переписывание git-истории.
-- Изменения бизнес-логики, не требуемые для D-005.
-- macOS-only runtime задачи (`D-001..D-003`) и desktop e2e-подтверждения.
+- Изменения бизнес-логики, не требуемые для D-006.
+- Повторный аудит уже закрытого D-005 (кроме ссылок на готовое evidence).
 
 ## Acceptance criteria
-1. Есть воспроизводимая команда запуска `stage6_core_verification` в текущем Linux контейнере.
-2. Команда и её результат (raw output + exit code) зафиксированы в evidence.
-3. Документы статуса синхронизированы: `D-004 = RESOLVED`, следующая задача = `D-005`.
+1. Для D-006 зафиксирован явный plan-of-record: какие acceptance-пункты переводятся из `PARTIAL`/`blocked_env`, каким evidence и в какой среде.
+2. После выполнения шага есть как минимум один новый проверяемый evidence-блок, уменьшающий объём неопределённости по финальному release verdict.
+3. Документы статуса синхронизированы: `D-005 = RESOLVED`, следующая задача = `D-006`.
