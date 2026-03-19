@@ -70,6 +70,7 @@ final class AppViewModel: ObservableObject {
             try reloadAll()
             selectedProject = projects.first
             selectedSpeedId = speedProfiles.first?.id ?? 0
+            errorMessage = nil
         } catch {
             present(error: error, prefix: "Ошибка инициализации")
         }
@@ -98,7 +99,7 @@ final class AppViewModel: ObservableObject {
         suppliers = (try? repository.suppliers()) ?? []
         receivableBuckets = stage5Service.receivablesBuckets((try? repository.receivablesDocuments()) ?? [])
         if let project = selectedProject {
-            refreshProjectProfitability(projectId: project.id)
+            refreshProjectProfitability(projectId: project.id, showMissingEstimateError: false)
             projectNotes = (try? repository.projectNotes(projectId: project.id)) ?? []
         }
     }
@@ -765,10 +766,12 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func refreshProjectProfitability(projectId: Int64) {
+    func refreshProjectProfitability(projectId: Int64, showMissingEstimateError: Bool = true) {
         do {
             guard let estimate = try repository.estimates(projectId: projectId).first else {
-                errorMessage = "Нет сметы для расчёта прибыльности проекта"
+                if showMissingEstimateError {
+                    errorMessage = "Нет сметы для расчёта прибыльности проекта"
+                }
                 selectedProjectProfitability = nil
                 return
             }
