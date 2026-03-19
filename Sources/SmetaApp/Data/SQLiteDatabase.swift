@@ -228,7 +228,7 @@ final class SQLiteDatabase {
         );
         CREATE TABLE IF NOT EXISTS document_series (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_type TEXT NOT NULL UNIQUE,
+            document_type TEXT NOT NULL,
             prefix TEXT NOT NULL,
             next_number INTEGER NOT NULL,
             active INTEGER NOT NULL DEFAULT 1
@@ -669,6 +669,7 @@ final class SQLiteDatabase {
     }
 
     private func applyDocumentSeriesActivationMigration() throws {
+        try dropLegacyDocumentSeriesTypeConstraintIfNeeded()
         try normalizeDocumentSeriesActivation()
         try execute("DROP INDEX IF EXISTS idx_document_series_type_unique;")
         try execute("CREATE INDEX IF NOT EXISTS idx_document_series_type_lookup ON document_series(document_type);")
@@ -677,6 +678,39 @@ final class SQLiteDatabase {
         ON document_series(document_type)
         WHERE active = 1;
         """)
+    }
+
+    private func dropLegacyDocumentSeriesTypeConstraintIfNeeded() throws {
+        guard try tableExists("document_series") else { return }
+
+        let statement = try prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='document_series' LIMIT 1;")
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let sqlPtr = sqlite3_column_text(statement, 0) else { return }
+
+        let tableSQL = String(cString: sqlPtr).lowercased()
+        let hasTypeUniqueConstraint = tableSQL.contains("document_type text not null unique")
+            || tableSQL.contains("unique(document_type)")
+        guard hasTypeUniqueConstraint else { return }
+
+        try execute("DROP TABLE IF EXISTS document_series_new;")
+        try execute("""
+        CREATE TABLE document_series_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_type TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            next_number INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        );
+        """)
+        try execute("""
+        INSERT INTO document_series_new (id, document_type, prefix, next_number, active)
+        SELECT id, document_type, prefix, next_number, active
+        FROM document_series
+        ORDER BY id;
+        """)
+        try execute("DROP TABLE document_series;")
+        try execute("ALTER TABLE document_series_new RENAME TO document_series;")
     }
 
     private func normalizeDocumentSeriesActivation() throws {
