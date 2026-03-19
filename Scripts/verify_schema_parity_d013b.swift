@@ -62,7 +62,8 @@ let expectedObjects: [ExpectedObject] = [
 
     // critical indexes
     .init(name: "idx_business_documents_number_unique", type: "index"),
-    .init(name: "idx_document_series_type_unique", type: "index"),
+    .init(name: "idx_document_series_type_lookup", type: "index"),
+    .init(name: "idx_document_series_active_unique", type: "index"),
     .init(name: "idx_payment_allocations_document", type: "index"),
     .init(name: "idx_projects_updated_lookup", type: "index")
 ]
