@@ -75,7 +75,8 @@ func currentWindow(of appElement: AXUIElement) -> AXUIElement? {
 }
 
 func visible(of element: AXUIElement) -> Bool {
-    (copyAttribute(element, name: kAXVisibleAttribute as String) as? Bool) ?? true
+    let hidden = (copyAttribute(element, name: kAXHiddenAttribute as String) as? Bool) ?? false
+    return !hidden
 }
 
 func value(of element: AXUIElement) -> String? {
