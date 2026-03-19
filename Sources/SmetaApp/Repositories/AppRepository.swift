@@ -11,6 +11,12 @@ final class AppRepository {
         let generatedAt: Date
     }
 
+    struct BusinessDocumentPDFExportWritePayload {
+        let exportKind: String
+        let exportScope: String
+        let finalPath: String
+    }
+
     let db: SQLiteDatabase
 
     static let demoResetCleanedTables = [

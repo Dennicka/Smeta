@@ -113,6 +113,26 @@ extension AppRepository {
             bind5(s, 1, kind); bind5(s, 2, scope); bind5(s, 3, path); sqlite3_bind_double(s, 4, Date().timeIntervalSince1970); try step5(s)
         }
     }
+
+    func performBusinessDocumentPDFExportWrites(
+        payload: BusinessDocumentPDFExportWritePayload,
+        beforeCommit: (() throws -> Void)? = nil,
+        failureInjection: (() throws -> Void)? = nil
+    ) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK")
+            }
+        }
+
+        try logExport(kind: payload.exportKind, scope: payload.exportScope, path: payload.finalPath)
+        try failureInjection?()
+        try beforeCommit?()
+        try db.execute("COMMIT")
+        committed = true
+    }
 }
 
 
