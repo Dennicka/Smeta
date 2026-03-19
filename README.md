@@ -93,7 +93,13 @@ swift run SmetaApp
 ```bash
 ./Scripts/macos_smoke_check.sh
 ```
-Проверяет, что приложение стартует, и пишет лог в `release/smoke-logs/runtime.log`.
+Канонический runtime smoke:
+- проверяет operational runtime (не только launch/window),
+- отдельно проверяет controlled startup failure classification,
+- имеет negative criterion (должен падать при мёртвой interactive chain),
+- проводит real UI actions через `Scripts/ui_smoke_driver.swift` (project selection + calculation trigger),
+- честно возвращает `BLOCKED` при отсутствии Accessibility permission для AX automation,
+- пишет логи в `release/smoke-logs/runtime-*.log`.
 
 ```bash
 ./Scripts/macos_package_dmg.sh

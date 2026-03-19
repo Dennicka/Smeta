@@ -44,6 +44,8 @@ struct CalculationView: View {
             TextField("Ставка труда/ч", value: $vm.laborRatePerHour, format: .number)
             TextField("Коэф.", value: $vm.overheadCoefficient, format: .number)
             Button("Рассчитать") { vm.calculate() }
+                .accessibilityIdentifier("smoke.calculate.run")
+                .disabled(SmokeRuntimeConfig.shouldDisableCalculationAction)
         }
     }
 

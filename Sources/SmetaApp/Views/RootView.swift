@@ -74,6 +74,7 @@ struct RootView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(sidebarAccessibilityIdentifier(for: screen))
     }
 
     private var detail: some View {
@@ -101,12 +102,43 @@ struct RootView: View {
                     .padding(.bottom, 8)
             }
 
+            if SmokeRuntimeConfig.isUISmokeEnabled {
+                smokeRuntimeStatus
+            }
+
             currentScreenView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.horizontal)
                 .padding(.bottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var smokeRuntimeStatus: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("operational-root")
+                .font(.caption2)
+                .accessibilityIdentifier("smoke.operational.marker")
+            Text("selected-project-id:\(vm.selectedProject?.id ?? -1)")
+                .font(.caption2)
+                .accessibilityIdentifier("smoke.selectedProject")
+            Text("calculation-rows:\(vm.calculationResult?.rows.count ?? 0)")
+                .font(.caption2)
+                .accessibilityIdentifier("smoke.calculationRows")
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal)
+    }
+
+    private func sidebarAccessibilityIdentifier(for screen: Screen) -> String {
+        switch screen {
+        case .projects:
+            return "smoke.nav.projects"
+        case .calculation:
+            return "smoke.nav.calculation"
+        default:
+            return "smoke.nav.\(screen.id)"
+        }
     }
 
     @ViewBuilder

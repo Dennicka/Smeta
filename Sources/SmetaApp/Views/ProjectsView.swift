@@ -31,6 +31,7 @@ struct ProjectsView: View {
                             vm.errorMessage = "Не удалось выбрать проект: \(error.localizedDescription)"
                         }
                     }
+                    .accessibilityIdentifier("smoke.project.select.\(p.id)")
                 }
             }
         }

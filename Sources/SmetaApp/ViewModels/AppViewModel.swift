@@ -101,6 +101,21 @@ final class AppViewModel: ObservableObject {
         try reloadAll()
     }
 
+    func ensureUISmokeBootstrapDataIfNeeded() throws {
+        guard SmokeRuntimeConfig.isUISmokeEnabled else { return }
+        if projects.count >= 2 { return }
+        guard let clientId = clients.first?.id else {
+            throw NSError(domain: "Smeta.RuntimeProbe", code: 9101, userInfo: [NSLocalizedDescriptionKey: "No client available for UI smoke"])
+        }
+        guard let propertyId = properties.first(where: { $0.clientId == clientId })?.id ?? properties.first?.id else {
+            throw NSError(domain: "Smeta.RuntimeProbe", code: 9102, userInfo: [NSLocalizedDescriptionKey: "No property available for UI smoke"])
+        }
+        addProject(clientId: clientId, propertyId: propertyId, name: "UI Smoke Secondary Project")
+        if let errorMessage {
+            throw NSError(domain: "Smeta.RuntimeProbe", code: 9103, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        }
+    }
+
     private func present(error: Error, prefix: String) {
         errorMessage = "\(prefix): \(error.localizedDescription)"
     }

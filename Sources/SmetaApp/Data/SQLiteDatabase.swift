@@ -24,13 +24,15 @@ final class SQLiteDatabase {
     let dbPath: URL
 
     init(filename: String = "smeta.sqlite") throws {
+        let environment = ProcessInfo.processInfo.environment
+        let resolvedFilename = environment["SMETA_DB_FILENAME"] ?? filename
         let appSupport = try FileManager.default.url(for: .applicationSupportDirectory,
                                                      in: .userDomainMask,
                                                      appropriateFor: nil,
                                                      create: true)
         let folder = appSupport.appendingPathComponent("Smeta", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        dbPath = folder.appendingPathComponent(filename)
+        dbPath = folder.appendingPathComponent(resolvedFilename)
 
         if sqlite3_open(dbPath.path, &db) != SQLITE_OK {
             throw DatabaseError.openFailed
