@@ -847,9 +847,7 @@ final class AppViewModel: ObservableObject {
 
     func resetDemoData() {
         do {
-            let tables = ["payment_allocations","payments","document_snapshots","business_document_lines","business_documents","estimate_lines","estimates","openings","surfaces","rooms","projects","properties","clients","suppliers","supplier_articles","supplier_price_history","purchase_list_items","purchase_lists","project_notes","project_tags","project_lifecycle_history","export_logs"]
-            for table in tables { try repository.db.execute("DELETE FROM \(table);") }
-            try repository.seedIfNeeded()
+            try repository.resetDemoData()
             try reloadAll()
             infoMessage = "Demo data reset выполнен"
         } catch { errorMessage = "Reset error: \(error.localizedDescription)" }

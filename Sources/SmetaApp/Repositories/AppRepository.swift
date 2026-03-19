@@ -4,7 +4,85 @@ import SQLite3
 final class AppRepository {
     let db: SQLiteDatabase
 
+    static let demoResetCleanedTables = [
+        "payment_allocations",
+        "payments",
+        "document_snapshots",
+        "business_document_lines",
+        "business_documents",
+        "generated_documents",
+        "estimate_adjustments",
+        "estimate_versions",
+        "estimate_lines",
+        "estimates",
+        "calculation_snapshots",
+        "trim_elements",
+        "openings",
+        "surfaces",
+        "rooms",
+        "project_notes",
+        "project_tags",
+        "project_lifecycle_history",
+        "project_status_history",
+        "projects",
+        "properties",
+        "clients",
+        "purchase_list_items",
+        "purchase_lists",
+        "supplier_price_history",
+        "supplier_articles",
+        "suppliers",
+        "default_project_presets",
+        "material_usage_norms",
+        "work_speed_rules",
+        "work_subcategories",
+        "work_categories",
+        "material_categories",
+        "export_logs",
+        "companies",
+        "speed_profiles",
+        "work_catalog",
+        "material_catalog",
+        "document_templates",
+        "document_series",
+        "tax_profiles"
+    ]
+
+    static let demoResetPreservedTables = [
+        "calculation_rules",
+        "schema_migrations"
+    ]
+
     init(db: SQLiteDatabase) { self.db = db }
+
+    func resetDemoData() throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK;")
+            }
+        }
+
+        for table in Self.demoResetCleanedTables {
+            try db.execute("DELETE FROM \(table);")
+        }
+        let sequenceFilter = Self.demoResetCleanedTables.map { "'\($0)'" }.joined(separator: ",")
+        try db.execute("DELETE FROM sqlite_sequence WHERE name IN (\(sequenceFilter));")
+
+        try seedIfNeeded()
+
+        var hasForeignKeyViolations = false
+        try db.withStatement("PRAGMA foreign_key_check;") { stmt in
+            hasForeignKeyViolations = sqlite3_step(stmt) == SQLITE_ROW
+        }
+        if hasForeignKeyViolations {
+            throw DatabaseError.executeFailed("resetDemoData produced foreign key violations")
+        }
+
+        try db.execute("COMMIT;")
+        committed = true
+    }
 
     func seedIfNeeded() throws {
         if try !clients().isEmpty { return }
