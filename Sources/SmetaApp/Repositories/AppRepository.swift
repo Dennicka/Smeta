@@ -2,6 +2,15 @@ import Foundation
 import SQLite3
 
 final class AppRepository {
+    struct OffertGenerationWritePayload {
+        let estimate: Estimate
+        let estimateLineDrafts: [EstimateLineDraft]
+        let generatedDocumentTemplateId: Int64
+        let generatedDocumentTitle: String
+        let generatedDocumentPath: String
+        let generatedAt: Date
+    }
+
     let db: SQLiteDatabase
 
     static let demoResetCleanedTables = [
@@ -328,6 +337,55 @@ final class AppRepository {
             sqlite3_bind_int64(s,1,e.projectId); sqlite3_bind_int64(s,2,e.speedProfileId); sqlite3_bind_double(s,3,e.laborRatePerHour); sqlite3_bind_double(s,4,e.overheadCoefficient); sqlite3_bind_double(s,5,e.createdAt.timeIntervalSince1970); try step(s)
         }
         return db.lastInsertedRowID()
+    }
+
+    func performOffertGenerationWrites(
+        payload: OffertGenerationWritePayload,
+        beforeCommit: (() throws -> Void)? = nil,
+        failureInjection: (() throws -> Void)? = nil
+    ) throws -> Int64 {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK")
+            }
+        }
+
+        let estimateId = try insertEstimate(payload.estimate)
+        for draft in payload.estimateLineDrafts {
+            try insertEstimateLine(
+                EstimateLine(
+                    id: 0,
+                    estimateId: estimateId,
+                    roomId: draft.roomId,
+                    workItemId: draft.workItemId,
+                    materialItemId: draft.materialItemId,
+                    quantity: draft.quantity,
+                    unitPrice: draft.unitPrice,
+                    coefficient: draft.coefficient,
+                    type: draft.type
+                )
+            )
+        }
+
+        try insertGeneratedDocument(
+            GeneratedDocument(
+                id: 0,
+                estimateId: estimateId,
+                templateId: payload.generatedDocumentTemplateId,
+                title: payload.generatedDocumentTitle,
+                path: payload.generatedDocumentPath,
+                generatedAt: payload.generatedAt
+            )
+        )
+
+        try failureInjection?()
+        try beforeCommit?()
+
+        try db.execute("COMMIT")
+        committed = true
+        return estimateId
     }
     func estimates(projectId: Int64? = nil) throws -> [Estimate] {
         let sql = projectId == nil ? "SELECT id,project_id,speed_profile_id,labor_rate_hour,overhead_coefficient,created_at FROM estimates ORDER BY id DESC" : "SELECT id,project_id,speed_profile_id,labor_rate_hour,overhead_coefficient,created_at FROM estimates WHERE project_id=? ORDER BY id DESC"

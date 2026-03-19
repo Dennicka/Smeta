@@ -4,6 +4,44 @@ import SmetaCore
 import AppKit
 #endif
 
+protocol OffertPDFGenerating {
+    func generateOffertSwedish(
+        template: DocumentTemplate,
+        company: Company,
+        client: Client,
+        project: Project,
+        result: CalculationResult,
+        saveURL: URL
+    ) throws
+}
+
+extension PDFDocumentService: OffertPDFGenerating {}
+
+protocol OffertDestinationProviding {
+    func chooseDestination(defaultFileName: String) throws -> URL?
+}
+
+struct OffertContourFailureInjection {
+    var persistentWriteFailure: (() throws -> Void)?
+    var beforePromoteFailure: (() throws -> Void)?
+}
+
+private struct DefaultOffertDestinationProvider: OffertDestinationProviding {
+    func chooseDestination(defaultFileName: String) throws -> URL? {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = defaultFileName
+        panel.allowedFileTypes = ["pdf"]
+        guard panel.runModal() == .OK else {
+            return nil
+        }
+        return panel.url
+        #else
+        throw NSError(domain: "OffertGeneration", code: 1, userInfo: [NSLocalizedDescriptionKey: "Генерация Offert доступна только на AppKit-платформах"])
+        #endif
+    }
+}
+
 #if !canImport(SwiftUI)
 protocol ObservableObject {}
 
@@ -72,6 +110,7 @@ final class AppViewModel: ObservableObject {
     private let repository: AppRepository
     private let calculator = EstimateCalculator()
     private let pdfService = PDFDocumentService()
+    private let offertPDFGenerator: OffertPDFGenerating
     private let backupService: BackupService
     private let stage5Service = Stage5Service()
     private let documentDraftBuilder = DocumentDraftBuilder()
@@ -79,10 +118,21 @@ final class AppViewModel: ObservableObject {
     private let documentExportPipeline = DocumentExportPipeline()
     private let pdfFileState = PDFFileStateOrchestrator()
     private let exportArtifacts = ExportArtifactCoordinator()
+    private let offertDestinationProvider: OffertDestinationProviding
+    private let offertFailureInjection: OffertContourFailureInjection?
 
-    init(repository: AppRepository, backupService: BackupService) {
+    init(
+        repository: AppRepository,
+        backupService: BackupService,
+        offertPDFGenerator: OffertPDFGenerating = PDFDocumentService(),
+        offertDestinationProvider: OffertDestinationProviding = DefaultOffertDestinationProvider(),
+        offertFailureInjection: OffertContourFailureInjection? = nil
+    ) {
         self.repository = repository
         self.backupService = backupService
+        self.offertPDFGenerator = offertPDFGenerator
+        self.offertDestinationProvider = offertDestinationProvider
+        self.offertFailureInjection = offertFailureInjection
     }
 
     func bootstrap() {
@@ -384,53 +434,42 @@ final class AppViewModel: ObservableObject {
             }
             let validRoomIds = Set(rooms.filter { $0.projectId == project.id }.map(\.id))
 
-            #if canImport(AppKit)
-            let panel = NSSavePanel()
-            panel.nameFieldStringValue = "Offert-\(project.name).pdf"
-            panel.allowedFileTypes = ["pdf"]
-            guard panel.runModal() == .OK, let finalURL = panel.url else {
+            guard let finalURL = try offertDestinationProvider.chooseDestination(defaultFileName: "Offert-\(project.name).pdf") else {
                 infoMessage = "Генерация Offert отменена пользователем"
                 return
             }
-            #else
-            throw NSError(domain: "OffertGeneration", code: 1, userInfo: [NSLocalizedDescriptionKey: "Генерация Offert доступна только на AppKit-платформах"])
-            #endif
 
             let tempURL = pdfFileState.temporaryPDFURL(near: finalURL, prefix: "offert-pending")
             var didMoveToFinal = false
             var backupURL: URL?
-            var committed = false
-            var beganTransaction = false
             do {
-                try pdfService.generateOffertSwedish(template: template, company: company, client: client, project: project, result: calc, saveURL: tempURL)
-                try repository.db.execute("BEGIN IMMEDIATE TRANSACTION")
-                beganTransaction = true
-
-                let estimateId = try repository.insertEstimate(Estimate(id: 0, projectId: project.id, speedProfileId: speed.id, laborRatePerHour: laborRatePerHour, overheadCoefficient: overheadCoefficient, createdAt: Date()))
-                for row in calc.rows {
-                    let estimateLine = try EstimateLineIdentityValidator.makeEstimateLine(
-                        estimateId: estimateId,
+                try offertPDFGenerator.generateOffertSwedish(template: template, company: company, client: client, project: project, result: calc, saveURL: tempURL)
+                let estimateLineDrafts = try calc.rows.map { row in
+                    try EstimateLineIdentityValidator.makeEstimateLineDraft(
                         row: row,
                         validRoomIds: validRoomIds
                     )
-                    try repository.insertEstimateLine(estimateLine)
                 }
-                try repository.insertGeneratedDocument(GeneratedDocument(id: 0, estimateId: estimateId, templateId: template.id, title: "Offert \(project.name)", path: finalURL.path, generatedAt: Date()))
-                backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
-                try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
-                didMoveToFinal = true
-                try repository.db.execute("COMMIT")
-                committed = true
+                _ = try repository.performOffertGenerationWrites(
+                    payload: AppRepository.OffertGenerationWritePayload(
+                        estimate: Estimate(id: 0, projectId: project.id, speedProfileId: speed.id, laborRatePerHour: laborRatePerHour, overheadCoefficient: overheadCoefficient, createdAt: Date()),
+                        estimateLineDrafts: estimateLineDrafts,
+                        generatedDocumentTemplateId: template.id,
+                        generatedDocumentTitle: "Offert \(project.name)",
+                        generatedDocumentPath: finalURL.path,
+                        generatedAt: Date()
+                    ),
+                    beforeCommit: {
+                        backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
+                        try offertFailureInjection?.beforePromoteFailure?()
+                        try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
+                        didMoveToFinal = true
+                    },
+                    failureInjection: offertFailureInjection?.persistentWriteFailure
+                )
             } catch {
                 var recoveryFailures: [String] = []
-                if beganTransaction && !committed {
-                    do {
-                        try repository.db.execute("ROLLBACK")
-                    } catch {
-                        recoveryFailures.append("rollback БД не выполнен: \(error.localizedDescription)")
-                    }
-                }
-                if beganTransaction {
+                if didMoveToFinal || backupURL != nil {
                     do {
                         try pdfFileState.recoverAfterFailedCommit(finalURL: finalURL, backupURL: backupURL, didPromote: didMoveToFinal)
                     } catch {
