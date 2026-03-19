@@ -2,6 +2,9 @@ import Foundation
 
 struct CalculationRow: Identifiable {
     let id = UUID()
+    let roomId: Int64
+    let workItemId: Int64?
+    let materialItemId: Int64?
     let roomName: String
     let itemName: String
     let quantity: Double
@@ -58,7 +61,10 @@ final class EstimateCalculator {
                 let days = hours / max(speed.daysDivider, rules.minSpeedDaysDivider)
                 let labor = pricingMode == .hourly ? hours * max(work.hourlyPrice, laborRate) : hours * laborRate
                 let total = labor
-                rows.append(CalculationRow(roomName: room.name,
+                rows.append(CalculationRow(roomId: room.id,
+                                           workItemId: work.id,
+                                           materialItemId: nil,
+                                           roomName: room.name,
                                            itemName: work.name,
                                            quantity: quantity,
                                            speedCoefficient: speedRate,
@@ -75,7 +81,10 @@ final class EstimateCalculator {
             for material in selectedMaterials[room.id, default: []].filter(\.isActive) {
                 let quantity = max(rules.minMaterialQuantity, room.area * max(material.usagePerWorkUnit, rules.minMaterialUsagePerWorkUnit))
                 let materialCost = quantity * (material.basePrice + material.basePrice * material.markupPercent / 100)
-                rows.append(CalculationRow(roomName: room.name,
+                rows.append(CalculationRow(roomId: room.id,
+                                           workItemId: nil,
+                                           materialItemId: material.id,
+                                           roomName: room.name,
                                            itemName: material.name,
                                            quantity: quantity,
                                            speedCoefficient: speed.coefficient,

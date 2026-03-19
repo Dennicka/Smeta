@@ -226,6 +226,7 @@ final class AppViewModel: ObservableObject {
                 errorMessage = "Не найден клиент проекта для Offert"
                 return
             }
+            let validRoomIds = Set(rooms.filter { $0.projectId == project.id }.map(\.id))
 
             let panel = NSSavePanel()
             panel.nameFieldStringValue = "Offert-\(project.name).pdf"
@@ -247,11 +248,12 @@ final class AppViewModel: ObservableObject {
 
                 let estimateId = try repository.insertEstimate(Estimate(id: 0, projectId: project.id, speedProfileId: speed.id, laborRatePerHour: laborRatePerHour, overheadCoefficient: overheadCoefficient, createdAt: Date()))
                 for row in calc.rows {
-                    if let room = rooms.first(where: { $0.name == row.roomName }) {
-                        let work = works.first(where: { $0.name == row.itemName })
-                        let material = materials.first(where: { $0.name == row.itemName })
-                        try repository.insertEstimateLine(EstimateLine(id: 0, estimateId: estimateId, roomId: room.id, workItemId: work?.id, materialItemId: material?.id, quantity: row.quantity, unitPrice: row.total, coefficient: row.coefficient, type: work == nil ? "material" : "work"))
-                    }
+                    let estimateLine = try EstimateLineIdentityValidator.makeEstimateLine(
+                        estimateId: estimateId,
+                        row: row,
+                        validRoomIds: validRoomIds
+                    )
+                    try repository.insertEstimateLine(estimateLine)
                 }
                 try repository.insertGeneratedDocument(GeneratedDocument(id: 0, estimateId: estimateId, templateId: template.id, title: "Offert \(project.name)", path: finalURL.path, generatedAt: Date()))
                 backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
