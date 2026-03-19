@@ -669,12 +669,47 @@ final class SQLiteDatabase {
     }
 
     private func applyDocumentSeriesActivationMigration() throws {
+        try normalizeDocumentSeriesActivation()
         try execute("DROP INDEX IF EXISTS idx_document_series_type_unique;")
         try execute("CREATE INDEX IF NOT EXISTS idx_document_series_type_lookup ON document_series(document_type);")
         try execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_document_series_active_unique
         ON document_series(document_type)
         WHERE active = 1;
+        """)
+    }
+
+    private func normalizeDocumentSeriesActivation() throws {
+        guard try tableExists("document_series") else { return }
+        try execute("""
+        WITH winners AS (
+            SELECT
+                document_type,
+                COALESCE(
+                    MIN(CASE WHEN active = 1 THEN id END),
+                    MIN(id)
+                ) AS winner_id
+            FROM document_series
+            GROUP BY document_type
+        )
+        UPDATE document_series
+        SET active = CASE
+            WHEN id = (
+                SELECT winner_id
+                FROM winners
+                WHERE winners.document_type = document_series.document_type
+            ) THEN 1
+            ELSE 0
+        END
+        WHERE document_type IN (SELECT document_type FROM winners)
+          AND active <> CASE
+              WHEN id = (
+                  SELECT winner_id
+                  FROM winners
+                  WHERE winners.document_type = document_series.document_type
+              ) THEN 1
+              ELSE 0
+          END;
         """)
     }
 
