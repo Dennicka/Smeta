@@ -21,6 +21,7 @@ products.insert(.executable(name: "SmetaApp", targets: ["SmetaApp"]), at: 0)
 targets.insert(
     .executableTarget(
         name: "SmetaApp",
+        dependencies: ["SmetaCore"],
         linkerSettings: [
             .linkedFramework("SwiftUI"),
             .linkedFramework("AppKit"),
