@@ -29,6 +29,7 @@ enum Screen: String, CaseIterable, Identifiable {
 struct RootView: View {
     @EnvironmentObject private var vm: AppViewModel
     @State private var selected: Screen = .dashboard
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -40,10 +41,11 @@ struct RootView: View {
 
     private var sidebar: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
                 ForEach(Screen.allCases) { screen in
                     sidebarRow(for: screen)
                 }
+                Spacer(minLength: 0)
             }
             .padding(10)
         }
@@ -78,6 +80,7 @@ struct RootView: View {
         VStack(spacing: 0) {
             TextField("Поиск", text: $vm.searchText)
                 .textFieldStyle(.roundedBorder)
+                .focused($isSearchFocused)
                 .padding()
 
             if let info = vm.infoMessage {
