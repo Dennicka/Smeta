@@ -78,28 +78,58 @@ struct CalculationView: View {
     @ViewBuilder
     private var resultSection: some View {
         if let result = vm.calculationResult {
-            Table(result.rows) {
-                TableColumn("Помещение", value: \.roomName)
-                TableColumn("Позиция", value: \.itemName)
-                TableColumn("Объём") { Text(String(format: "%.2f", $0.quantity)) }
-                TableColumn("Скорость") { Text(String(format: "%.2f", $0.speedCoefficient)) }
-                TableColumn("Норма") { Text(String(format: "%.2f", $0.normHours)) }
-                TableColumn("Коэф") { Text(String(format: "%.2f", $0.coefficient)) }
-                TableColumn("Часы") { Text(String(format: "%.2f", $0.hours)) }
-                TableColumn("Дни") { Text(String(format: "%.2f", $0.days)) }
-                TableColumn("Труд") { Text(String(format: "%.2f", $0.laborCost)) }
-                TableColumn("Материалы") { Text(String(format: "%.2f", $0.materialCost)) }
-                TableColumn("Итог") { Text(String(format: "%.2f", $0.total)) }
-                TableColumn("Формула") { Text($0.formula).font(.caption) }
+            List {
+                Section("Строки расчёта") {
+                    ForEach(Array(result.rows.enumerated()), id: \.offset) { _, row in
+                        calculationRow(row)
+                    }
+                }
             }
-            Group {
-                Text("Труд: \(result.totalLabor, specifier: "%.2f")")
-                Text("Материалы: \(result.totalMaterials, specifier: "%.2f")")
-                Text("Transport: \(result.transportCost, specifier: "%.2f") | Equipment: \(result.equipmentCost, specifier: "%.2f") | Waste: \(result.wasteCost, specifier: "%.2f")")
-                Text("Margin: \(result.margin, specifier: "%.2f") | Moms: \(result.moms, specifier: "%.2f")")
-                Text("Итого: \(result.grandTotal, specifier: "%.2f")").font(.title3).bold()
-            }
+            calculationTotals(result)
         }
+    }
+
+    private func calculationRow(_ row: CalculationRow) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(row.roomName).bold()
+                Text("•")
+                Text(row.itemName)
+            }
+            HStack(spacing: 10) {
+                Text("Объём: \(format2(row.quantity))")
+                Text("Скорость: \(format2(row.speedCoefficient))")
+                Text("Норма: \(format2(row.normHours))")
+                Text("Коэф: \(format2(row.coefficient))")
+            }
+            .font(.caption)
+            HStack(spacing: 10) {
+                Text("Часы: \(format2(row.hours))")
+                Text("Дни: \(format2(row.days))")
+                Text("Труд: \(format2(row.laborCost))")
+                Text("Материалы: \(format2(row.materialCost))")
+                Text("Итог: \(format2(row.total))").bold()
+            }
+            .font(.caption)
+            Text("Формула: \(row.formula)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func calculationTotals(_ result: CalculationResult) -> some View {
+        Group {
+            Text("Труд: \(result.totalLabor, specifier: "%.2f")")
+            Text("Материалы: \(result.totalMaterials, specifier: "%.2f")")
+            Text("Transport: \(result.transportCost, specifier: "%.2f") | Equipment: \(result.equipmentCost, specifier: "%.2f") | Waste: \(result.wasteCost, specifier: "%.2f")")
+            Text("Margin: \(result.margin, specifier: "%.2f") | Moms: \(result.moms, specifier: "%.2f")")
+            Text("Итого: \(result.grandTotal, specifier: "%.2f")").font(.title3).bold()
+        }
+    }
+
+    private func format2(_ value: Double) -> String {
+        String(format: "%.2f", value)
     }
 }
 #endif
