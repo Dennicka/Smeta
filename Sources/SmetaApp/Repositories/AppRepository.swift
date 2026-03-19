@@ -55,6 +55,25 @@ final class AppRepository {
 
     init(db: SQLiteDatabase) { self.db = db }
 
+    func performLaunchBootstrapWrites(
+        failureInjection: (() throws -> Void)? = nil
+    ) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK;")
+            }
+        }
+
+        try seedIfNeeded()
+        try failureInjection?()
+        try seedStage2Defaults()
+
+        try db.execute("COMMIT;")
+        committed = true
+    }
+
     func resetDemoData() throws {
         try db.execute("BEGIN IMMEDIATE TRANSACTION;")
         var committed = false
@@ -71,6 +90,7 @@ final class AppRepository {
         try db.execute("DELETE FROM sqlite_sequence WHERE name IN (\(sequenceFilter));")
 
         try seedIfNeeded()
+        try seedStage2Defaults()
 
         var hasForeignKeyViolations = false
         try db.withStatement("PRAGMA foreign_key_check;") { stmt in
@@ -110,7 +130,6 @@ final class AppRepository {
         _ = try insertRoom(Room(id: 0, projectId: projectId, name: "Кухня", area: 14, height: 2.7))
         _ = try insertRoom(Room(id: 0, projectId: projectId, name: "Коридор", area: 8, height: 2.6))
 
-        try seedStage2Defaults()
     }
 
     func companies() throws -> [Company] { try fetch("SELECT id,name,org_number,email,phone FROM companies") { stmt in
