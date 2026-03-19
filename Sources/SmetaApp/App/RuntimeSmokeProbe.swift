@@ -57,14 +57,16 @@ enum RuntimeSmokeProbe {
 
         #if canImport(AppKit)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            let negativeInjection = ProcessInfo.processInfo.environment["SMETA_RUNTIME_KILL_INTERACTION_CHAIN"] == "1"
-            let result = evaluateOperationalState(viewModel: viewModel, negativeInjection: negativeInjection)
-            emitAndExit(
-                pass: result.failures.isEmpty,
-                classification: result.failures.isEmpty ? "operational_runtime_success" : "operational_runtime_failure",
-                details: result.failures.isEmpty ? result.successNotes : result.failures,
-                exitCode: result.failures.isEmpty ? 0 : 32
-            )
+            Task { @MainActor in
+                let negativeInjection = ProcessInfo.processInfo.environment["SMETA_RUNTIME_KILL_INTERACTION_CHAIN"] == "1"
+                let result = evaluateOperationalState(viewModel: viewModel, negativeInjection: negativeInjection)
+                emitAndExit(
+                    pass: result.failures.isEmpty,
+                    classification: result.failures.isEmpty ? "operational_runtime_success" : "operational_runtime_failure",
+                    details: result.failures.isEmpty ? result.successNotes : result.failures,
+                    exitCode: result.failures.isEmpty ? 0 : 32
+                )
+            }
         }
         #else
         emitAndExit(
@@ -82,6 +84,7 @@ enum RuntimeSmokeProbe {
         var failures: [String] = []
     }
 
+    @MainActor
     private static func evaluateOperationalState(viewModel: AppViewModel, negativeInjection: Bool) -> ProbeResult {
         var result = ProbeResult()
 
@@ -199,6 +202,7 @@ enum RuntimeSmokeProbe {
         return result
     }
 
+    @MainActor
     private static func ensureAlternateProject(viewModel: AppViewModel, excluding projectId: Int64) throws -> Project {
         if let existing = viewModel.projects.first(where: { $0.id != projectId }) {
             return existing

@@ -269,6 +269,7 @@ final class AppViewModel: ObservableObject {
         let selectedSpeedId: Int64
         let calculationRules: CalculationRules
 
+        @MainActor
         static func capture(from vm: AppViewModel) -> StateSnapshot {
             StateSnapshot(clients: vm.clients,
                           properties: vm.properties,
@@ -293,6 +294,7 @@ final class AppViewModel: ObservableObject {
                           calculationRules: vm.calculationRules)
         }
 
+        @MainActor
         func restore(to vm: AppViewModel) {
             vm.clients = clients
             vm.properties = properties
@@ -499,12 +501,12 @@ final class AppViewModel: ObservableObject {
                         generatedAt: Date()
                     ),
                     beforeCommit: {
-                        backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
-                        try offertFailureInjection?.beforePromoteFailure?()
-                        try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
+                        backupURL = try self.pdfFileState.backupExistingFileIfNeeded(at: finalURL)
+                        try self.offertFailureInjection?.beforePromoteFailure?()
+                        try self.pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
                         didMoveToFinal = true
                     },
-                    failureInjection: offertFailureInjection?.persistentWriteFailure
+                    failureInjection: self.offertFailureInjection?.persistentWriteFailure
                 )
             } catch {
                 var recoveryFailures: [String] = []
@@ -921,12 +923,12 @@ final class AppViewModel: ObservableObject {
                         finalPath: finalURL.path
                     ),
                     beforeCommit: {
-                        backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
+                        backupURL = try self.pdfFileState.backupExistingFileIfNeeded(at: finalURL)
                         try self.businessDocumentExportFailureInjection?.beforePromoteFailure?()
-                        try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
+                        try self.pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
                         didMoveToFinal = true
                     },
-                    failureInjection: businessDocumentExportFailureInjection?.persistentWriteFailure
+                    failureInjection: self.businessDocumentExportFailureInjection?.persistentWriteFailure
                 )
             } catch {
                 var recoveryFailures: [String] = []
