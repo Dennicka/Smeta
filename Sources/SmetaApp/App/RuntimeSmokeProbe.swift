@@ -240,7 +240,7 @@ enum RuntimeSmokeProbe {
     }
     #endif
 
-    private static func emitAndExit(pass: Bool, classification: String, details: [String], exitCode: Int32) {
+    private static func emitAndExit(pass: Bool, classification: String, details: [String], exitCode: Int32) -> Never {
         let joinedDetails = details.joined(separator: " | ")
         print("SMETA_RUNTIME_SMOKE verdict=\(pass ? "PASS" : "FAIL") classification=\(classification) details=\(joinedDetails)")
         fflush(stdout)
