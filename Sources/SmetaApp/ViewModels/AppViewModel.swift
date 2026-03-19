@@ -1,6 +1,20 @@
-#if canImport(SwiftUI)
 import Foundation
+import SmetaCore
+#if canImport(AppKit)
 import AppKit
+#endif
+
+#if !canImport(SwiftUI)
+protocol ObservableObject {}
+
+@propertyWrapper
+struct Published<Value> {
+    var wrappedValue: Value
+    init(wrappedValue: Value) {
+        self.wrappedValue = wrappedValue
+    }
+}
+#endif
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -68,8 +82,6 @@ final class AppViewModel: ObservableObject {
             try repository.seedIfNeeded()
             try repository.seedStage2Defaults()
             try reloadAll()
-            selectedProject = projects.first
-            selectedSpeedId = speedProfiles.first?.id ?? 0
             errorMessage = nil
         } catch {
             present(error: error, prefix: "Ошибка инициализации")
@@ -81,6 +93,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func reloadAll() throws {
+        let selectedProjectId = selectedProject?.id
         clients = try repository.clients()
         properties = try repository.fetchWithClientProperties()
         projects = try repository.projects()
@@ -98,6 +111,10 @@ final class AppViewModel: ObservableObject {
         calculationRules = try repository.calculationRules()
         suppliers = (try? repository.suppliers()) ?? []
         receivableBuckets = stage5Service.receivablesBuckets((try? repository.receivablesDocuments()) ?? [])
+        selectedProject = selectedProjectId.flatMap { id in
+            projects.first(where: { $0.id == id })
+        } ?? projects.first
+        try synchronizeSelectedSpeedWithSelectedProject(persistFallbackToProject: true, context: "reload")
         if let project = selectedProject {
             refreshProjectProfitability(projectId: project.id, showMissingEstimateError: false)
             projectNotes = (try? repository.projectNotes(projectId: project.id)) ?? []
@@ -132,12 +149,43 @@ final class AppViewModel: ObservableObject {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { errorMessage = "Название проекта обязательно"; return }
         do {
-            let speed = selectedSpeedId == 0 ? (speedProfiles.first?.id ?? 1) : selectedSpeedId
-            _ = try repository.insertProject(Project(id: 0, clientId: clientId, propertyId: propertyId, name: trimmed, speedProfileId: speed, createdAt: Date()))
+            let speed = resolvedSpeedIdForNewProject()
+            let projectId = try repository.insertProject(Project(id: 0, clientId: clientId, propertyId: propertyId, name: trimmed, speedProfileId: speed, createdAt: Date()))
             infoMessage = "Проект создан"
             try reloadAll()
+            if let inserted = projects.first(where: { $0.id == projectId }) {
+                try selectProject(inserted)
+            }
         } catch {
             errorMessage = "Не удалось создать проект: \(error.localizedDescription)"
+        }
+    }
+
+    func selectProject(_ project: Project) throws {
+        selectedProject = project
+        try synchronizeSelectedSpeedWithSelectedProject(persistFallbackToProject: true, context: "project-selection")
+    }
+
+    func setSelectedSpeedProfile(_ speedProfileId: Int64) {
+        guard speedProfiles.contains(where: { $0.id == speedProfileId }) else {
+            errorMessage = "Выбранный профиль скорости недоступен"
+            return
+        }
+        guard var project = selectedProject else {
+            selectedSpeedId = speedProfileId
+            return
+        }
+        do {
+            try repository.updateProjectSpeedProfile(projectId: project.id, speedProfileId: speedProfileId)
+            project.speedProfileId = speedProfileId
+            selectedProject = project
+            selectedSpeedId = speedProfileId
+            if let projectIndex = projects.firstIndex(where: { $0.id == project.id }) {
+                projects[projectIndex].speedProfileId = speedProfileId
+            }
+            try reloadAll()
+        } catch {
+            present(error: error, prefix: "Не удалось обновить профиль скорости проекта")
         }
     }
 
@@ -181,11 +229,14 @@ final class AppViewModel: ObservableObject {
             errorMessage = "Выберите проект перед расчётом"
             return
         }
-        let projectRooms = rooms.filter { $0.projectId == project.id }
-        guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first else {
-            errorMessage = "Не найден профиль скорости для расчёта"
+        let speed: SpeedProfile
+        do {
+            speed = try synchronizedSpeedProfileForSelectedProject(context: "calculation")
+        } catch {
+            present(error: error, prefix: "Не найден профиль скорости для расчёта")
             return
         }
+        let projectRooms = rooms.filter { $0.projectId == project.id }
         let openings = Dictionary(uniqueKeysWithValues: projectRooms.map { ($0.id, openingsByRoom[$0.id, default: []]) })
         let surfaces = Dictionary(uniqueKeysWithValues: projectRooms.map { ($0.id, surfacesByRoom[$0.id, default: []]) })
         calculationResult = calculator.calculate(rooms: projectRooms,
@@ -206,10 +257,7 @@ final class AppViewModel: ObservableObject {
                 errorMessage = "Выберите проект перед генерацией Offert"
                 return
             }
-            guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) ?? speedProfiles.first else {
-                errorMessage = "Не найден профиль скорости для генерации Offert"
-                return
-            }
+            let speed = try synchronizedSpeedProfileForSelectedProject(context: "offert")
             guard let calc = calculationResult else {
                 errorMessage = "Сначала выполните расчёт, затем генерируйте Offert"
                 return
@@ -228,6 +276,7 @@ final class AppViewModel: ObservableObject {
             }
             let validRoomIds = Set(rooms.filter { $0.projectId == project.id }.map(\.id))
 
+            #if canImport(AppKit)
             let panel = NSSavePanel()
             panel.nameFieldStringValue = "Offert-\(project.name).pdf"
             panel.allowedFileTypes = ["pdf"]
@@ -235,6 +284,9 @@ final class AppViewModel: ObservableObject {
                 infoMessage = "Генерация Offert отменена пользователем"
                 return
             }
+            #else
+            throw NSError(domain: "OffertGeneration", code: 1, userInfo: [NSLocalizedDescriptionKey: "Генерация Offert доступна только на AppKit-платформах"])
+            #endif
 
             let tempURL = pdfFileState.temporaryPDFURL(near: finalURL, prefix: "offert-pending")
             var didMoveToFinal = false
@@ -313,6 +365,63 @@ final class AppViewModel: ObservableObject {
                 infoMessage = "Offert сохранён"
             }
         } catch { present(error: error, prefix: "Ошибка генерации Offert") }
+    }
+
+    private func resolvedSpeedIdForNewProject() -> Int64 {
+        if let selectedProject,
+           speedProfiles.contains(where: { $0.id == selectedProject.speedProfileId }) {
+            return selectedProject.speedProfileId
+        }
+        if speedProfiles.contains(where: { $0.id == selectedSpeedId }) {
+            return selectedSpeedId
+        }
+        return speedProfiles.first?.id ?? 1
+    }
+
+    private func synchronizedSpeedProfileForSelectedProject(context: String) throws -> SpeedProfile {
+        try synchronizeSelectedSpeedWithSelectedProject(persistFallbackToProject: true, context: context)
+        guard let speed = speedProfiles.first(where: { $0.id == selectedSpeedId }) else {
+            throw ProjectSpeedSyncError.noAvailableSpeedProfiles
+        }
+        return speed
+    }
+
+    func resolveSyncedSpeedProfileIdForEstimatePath() throws -> Int64 {
+        try synchronizedSpeedProfileForSelectedProject(context: "estimate-save-probe").id
+    }
+
+    private func synchronizeSelectedSpeedWithSelectedProject(persistFallbackToProject: Bool, context: String) throws {
+        guard let project = selectedProject else {
+            selectedSpeedId = speedProfiles.first?.id ?? 0
+            return
+        }
+        let decision = try ProjectSpeedSyncResolver.resolve(
+            projectSpeedProfileId: project.speedProfileId,
+            availableSpeedProfileIds: speedProfiles.map(\.id)
+        )
+        selectedSpeedId = decision.activeSpeedProfileId
+        guard decision.didUseFallback else { return }
+        if persistFallbackToProject {
+            try repository.updateProjectSpeedProfile(projectId: project.id, speedProfileId: decision.activeSpeedProfileId)
+            if let selected = selectedProject {
+                selectedProject = Project(
+                    id: selected.id,
+                    clientId: selected.clientId,
+                    propertyId: selected.propertyId,
+                    name: selected.name,
+                    speedProfileId: decision.activeSpeedProfileId,
+                    createdAt: selected.createdAt,
+                    pricingMode: selected.pricingMode,
+                    isDraft: selected.isDraft
+                )
+            }
+            if let projectIndex = projects.firstIndex(where: { $0.id == project.id }) {
+                projects[projectIndex].speedProfileId = decision.activeSpeedProfileId
+            }
+        }
+        if let missingSpeedId = decision.missingProjectSpeedProfileId {
+            errorMessage = "Профиль скорости id \(missingSpeedId) отсутствует для проекта \"\(project.name)\"; применён fallback id \(decision.activeSpeedProfileId) (\(context))"
+        }
     }
 
 
@@ -603,6 +712,7 @@ final class AppViewModel: ObservableObject {
             let snapshots = try repository.documentSnapshots(documentId: doc.id)
             let payload = try documentExportPipeline.buildPayload(document: doc, lines: lines, snapshots: snapshots)
 
+            #if canImport(AppKit)
             let panel = NSSavePanel()
             let identifier = doc.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "DRAFT-\(doc.id)" : doc.number
             panel.nameFieldStringValue = "\(doc.type)-\(identifier).pdf"
@@ -611,6 +721,9 @@ final class AppViewModel: ObservableObject {
                 infoMessage = "Экспорт PDF отменён пользователем"
                 return
             }
+            #else
+            throw NSError(domain: "DocumentExport", code: 1, userInfo: [NSLocalizedDescriptionKey: "Экспорт PDF доступен только на AppKit-платформах"])
+            #endif
 
             let tempURL = pdfFileState.temporaryPDFURL(near: finalURL, prefix: "business-document-pending")
             var didMoveToFinal = false
@@ -881,4 +994,3 @@ private extension AppRepository {
         try properties(for: nil)
     }
 }
-#endif

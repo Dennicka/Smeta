@@ -238,6 +238,13 @@ final class AppRepository {
         }
         return db.lastInsertedRowID()
     }
+    func updateProjectSpeedProfile(projectId: Int64, speedProfileId: Int64) throws {
+        try db.withStatement("UPDATE projects SET speed_profile_id=? WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, speedProfileId)
+            sqlite3_bind_int64(s, 2, projectId)
+            try step(s)
+        }
+    }
 
     func rooms(projectId: Int64? = nil) throws -> [Room] {
         let sql = projectId == nil ? "SELECT id,project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id FROM rooms ORDER BY id DESC" : "SELECT id,project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id FROM rooms WHERE project_id=? ORDER BY id DESC"

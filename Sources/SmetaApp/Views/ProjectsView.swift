@@ -23,7 +23,15 @@ struct ProjectsView: View {
             Table(vm.projects) {
                 TableColumn("Проект") { p in Text(p.name) }
                 TableColumn("Дата") { p in Text(p.createdAt.formatted()) }
-                TableColumn("Открыть") { p in Button("Выбрать") { vm.selectedProject = p } }
+                TableColumn("Открыть") { p in
+                    Button("Выбрать") {
+                        do {
+                            try vm.selectProject(p)
+                        } catch {
+                            vm.errorMessage = "Не удалось выбрать проект: \(error.localizedDescription)"
+                        }
+                    }
+                }
             }
         }
         .onAppear {

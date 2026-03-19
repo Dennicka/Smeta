@@ -29,7 +29,13 @@ struct CalculationView: View {
 
     private var controlsSection: some View {
         HStack {
-            Picker("Скорость", selection: $vm.selectedSpeedId) {
+            Picker(
+                "Скорость",
+                selection: Binding(
+                    get: { vm.selectedSpeedId },
+                    set: { vm.setSelectedSpeedProfile($0) }
+                )
+            ) {
                 ForEach(vm.speedProfiles) { Text($0.name).tag($0.id) }
             }
             Picker("Режим цены", selection: $vm.pricingMode) {

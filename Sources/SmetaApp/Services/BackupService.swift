@@ -70,4 +70,21 @@ final class BackupService {
         return alert.runModal() == .alertFirstButtonReturn
     }
 }
+#else
+import Foundation
+
+enum BackupServiceError: LocalizedError {
+    case unsupportedPlatform
+
+    var errorDescription: String? {
+        "Backup/restore dialogs are supported only on AppKit platforms."
+    }
+}
+
+final class BackupService {
+    init(db: SQLiteDatabase) {}
+
+    func backupViaDialog() throws { throw BackupServiceError.unsupportedPlatform }
+    func restoreViaDialog() throws { throw BackupServiceError.unsupportedPlatform }
+}
 #endif
