@@ -1,5 +1,15 @@
 import Foundation
 
+struct EstimateLineDraft: Equatable {
+    let roomId: Int64
+    let workItemId: Int64?
+    let materialItemId: Int64?
+    let quantity: Double
+    let unitPrice: Double
+    let coefficient: Double
+    let type: String
+}
+
 enum EstimateLineIdentityError: Error, LocalizedError {
     case roomOutOfScope(roomId: Int64)
     case invalidWorkMaterialLink(workItemId: Int64?, materialItemId: Int64?, itemName: String)
@@ -20,6 +30,24 @@ struct EstimateLineIdentityValidator {
         row: CalculationRow,
         validRoomIds: Set<Int64>
     ) throws -> EstimateLine {
+        let draft = try makeEstimateLineDraft(row: row, validRoomIds: validRoomIds)
+        return EstimateLine(
+            id: 0,
+            estimateId: estimateId,
+            roomId: draft.roomId,
+            workItemId: draft.workItemId,
+            materialItemId: draft.materialItemId,
+            quantity: draft.quantity,
+            unitPrice: draft.unitPrice,
+            coefficient: draft.coefficient,
+            type: draft.type
+        )
+    }
+
+    static func makeEstimateLineDraft(
+        row: CalculationRow,
+        validRoomIds: Set<Int64>
+    ) throws -> EstimateLineDraft {
         guard validRoomIds.contains(row.roomId) else {
             throw EstimateLineIdentityError.roomOutOfScope(roomId: row.roomId)
         }
@@ -30,9 +58,7 @@ struct EstimateLineIdentityValidator {
             throw EstimateLineIdentityError.invalidWorkMaterialLink(workItemId: row.workItemId, materialItemId: row.materialItemId, itemName: row.itemName)
         }
 
-        return EstimateLine(
-            id: 0,
-            estimateId: estimateId,
+        return EstimateLineDraft(
             roomId: row.roomId,
             workItemId: row.workItemId,
             materialItemId: row.materialItemId,
