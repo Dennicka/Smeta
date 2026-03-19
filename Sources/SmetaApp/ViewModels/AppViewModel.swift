@@ -71,6 +71,7 @@ final class AppViewModel: ObservableObject {
     private let documentSnapshotBuilder = DocumentSnapshotBuilder()
     private let documentExportPipeline = DocumentExportPipeline()
     private let pdfFileState = PDFFileStateOrchestrator()
+    private let exportArtifacts = ExportArtifactCoordinator()
 
     init(repository: AppRepository, backupService: BackupService) {
         self.repository = repository
@@ -938,9 +939,14 @@ final class AppViewModel: ObservableObject {
             let projectDocs = businessDocuments.filter { $0.projectId == projectId }
             let lines = projectDocs.map { "\($0.number),\($0.type),\($0.totalAmount),\($0.paidAmount),\($0.balanceDue)" }.joined(separator: "\n")
             let csv = "number,type,total,paid,outstanding\n" + lines
-            let exportFolder = folder.appendingPathComponent("smeta-project-\(projectId)-\(Int(Date().timeIntervalSince1970))", isDirectory: true)
-            try FileManager.default.createDirectory(at: exportFolder, withIntermediateDirectories: true)
-            let csvPath = exportFolder.appendingPathComponent("invoice_register.csv")
+            let timestamp = Int(Date().timeIntervalSince1970)
+            let exportFolderName = "smeta-project-\(projectId)-\(timestamp)"
+            let stagingFolder = try exportArtifacts.prepareProjectBundleStagingFolder(
+                dataFolder: repository.db.dataFolder(),
+                projectId: projectId,
+                timestamp: timestamp
+            )
+            let csvPath = stagingFolder.appendingPathComponent("invoice_register.csv")
             guard let csvData = csv.data(using: .utf8) else {
                 errorMessage = "Не удалось закодировать invoice_register.csv в UTF-8"
                 return
@@ -951,7 +957,9 @@ final class AppViewModel: ObservableObject {
                 errorMessage = "Не удалось закодировать manifest.json в UTF-8"
                 return
             }
-            try manifestData.write(to: exportFolder.appendingPathComponent("manifest.json"))
+            try manifestData.write(to: stagingFolder.appendingPathComponent("manifest.json"))
+            let exportFolder = folder.appendingPathComponent(exportFolderName, isDirectory: true)
+            try FileManager.default.moveItem(at: stagingFolder, to: exportFolder)
             try repository.logExport(kind: "project_bundle", scope: "project_\(projectId)", path: exportFolder.path)
             NSWorkspace.shared.open(exportFolder)
             infoMessage = "Export bundle создан"
@@ -967,24 +975,21 @@ final class AppViewModel: ObservableObject {
     }
 
     func clearTempExports() {
-        do {
-            let folder = repository.db.dataFolder()
-            let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-            let doomed = files.filter { $0.lastPathComponent.hasPrefix("smeta-project-") }
-            var failedPaths: [String] = []
-            for file in doomed {
-                do {
-                    try FileManager.default.removeItem(at: file)
-                } catch {
-                    failedPaths.append("\(file.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
-            if failedPaths.isEmpty {
-                infoMessage = "Старые export artifacts очищены"
-            } else {
-                errorMessage = "Часть export artifacts не удалена: \(failedPaths.joined(separator: "; "))"
-            }
-        } catch { errorMessage = "Cleanup error: \(error.localizedDescription)" }
+        let report = exportArtifacts.cleanupManagedArtifacts(dataFolder: repository.db.dataFolder())
+        if report.isNoOp {
+            infoMessage = "Временных export artifacts не найдено"
+            return
+        }
+        if report.failures.isEmpty {
+            infoMessage = "Очистка export artifacts завершена: удалено \(report.deletedCount)"
+            return
+        }
+        let details = report.failures.map { "\($0.path): \($0.reason)" }.joined(separator: " | ")
+        if report.deletedCount > 0 {
+            errorMessage = "Очистка export artifacts частично выполнена: удалено \(report.deletedCount), ошибок \(report.failures.count). \(details)"
+        } else {
+            errorMessage = "Очистка export artifacts не выполнена: \(details)"
+        }
     }
 
 }
