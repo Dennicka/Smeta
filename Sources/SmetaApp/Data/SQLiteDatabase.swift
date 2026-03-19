@@ -668,6 +668,16 @@ final class SQLiteDatabase {
         """)
     }
 
+    private func applyDocumentSeriesActivationMigration() throws {
+        try execute("DROP INDEX IF EXISTS idx_document_series_type_unique;")
+        try execute("CREATE INDEX IF NOT EXISTS idx_document_series_type_lookup ON document_series(document_type);")
+        try execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_document_series_active_unique
+        ON document_series(document_type)
+        WHERE active = 1;
+        """)
+    }
+
     private func addColumnIfMissing(table: String, column: String, definition: String) throws {
         guard try tableExists(table) else { return }
         guard !(try columnExists(table: table, column: column)) else { return }
@@ -736,6 +746,9 @@ final class SQLiteDatabase {
         },
         MigrationStep(version: 3, id: "003_stage5_ops_tail_tables") { database in
             try database.applyStage5OpsTailTablesMigration()
+        },
+        MigrationStep(version: 4, id: "004_document_series_activation") { database in
+            try database.applyDocumentSeriesActivationMigration()
         }
     ]
 

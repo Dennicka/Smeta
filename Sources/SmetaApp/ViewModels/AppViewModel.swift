@@ -768,6 +768,10 @@ final class AppViewModel: ObservableObject {
 
     func finalizeDocument(_ doc: BusinessDocument) {
         guard !doc.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { errorMessage = "Нельзя финализировать документ без заголовка"; return }
+        guard doc.status == DocumentStatus.draft.rawValue else {
+            infoMessage = "Документ уже финализирован"
+            return
+        }
         do {
             let templateId = templates.first?.id
             let sourceEstimateId = try repository.estimates(projectId: doc.projectId).first?.id

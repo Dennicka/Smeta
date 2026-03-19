@@ -79,10 +79,11 @@ extension AppRepository {
         return id
     }
 
-    func finalizeDocumentWithSnapshot(
+    func performDocumentFinalizationWrites(
         documentId: Int64,
         templateId: Int64?,
-        snapshotBuilder: (BusinessDocument, [BusinessDocumentLine]) throws -> String
+        snapshotBuilder: (BusinessDocument, [BusinessDocumentLine]) throws -> String,
+        failureInjection: (() throws -> Void)? = nil
     ) throws {
         try db.execute("BEGIN IMMEDIATE TRANSACTION")
         var committed = false
@@ -92,19 +93,42 @@ extension AppRepository {
             }
         }
 
-        let assignedNumber = try nextDocumentNumber(for: documentId)
+        guard let currentDocument = try businessDocument(documentId: documentId) else {
+            throw DatabaseError.executeFailed("Документ не найден")
+        }
+
+        if currentDocument.status == DocumentStatus.finalized.rawValue {
+            try db.execute("COMMIT")
+            committed = true
+            return
+        }
+
+        guard currentDocument.status == DocumentStatus.draft.rawValue else {
+            throw DatabaseError.executeFailed("Финализация доступна только для draft-документа")
+        }
+
+        let activeSeries = try requireActiveSeries(for: currentDocument.type)
+        let assignedNumber = "\(activeSeries.prefix)-\(String(format: "%06d", activeSeries.nextNumber))"
+
         try db.withStatement("UPDATE business_documents SET status='finalized', number=? WHERE id=? AND status='draft'") { s in
             bind2(s, 1, assignedNumber)
             sqlite3_bind_int64(s, 2, documentId)
             try step2(s)
         }
 
+        try db.withStatement("UPDATE document_series SET next_number=? WHERE id=?") { s in
+            sqlite3_bind_int(s, 1, Int32(activeSeries.nextNumber + 1))
+            sqlite3_bind_int64(s, 2, activeSeries.id)
+            try step2(s)
+        }
+
+        try failureInjection?()
+
         guard let finalizedDocument = try businessDocument(documentId: documentId),
               finalizedDocument.status == DocumentStatus.finalized.rawValue,
               !finalizedDocument.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              finalizedDocument.number == assignedNumber
-        else {
-            throw DatabaseError.executeFailed("Не удалось подтвердить final state документа перед snapshot")
+              finalizedDocument.number == assignedNumber else {
+            throw DatabaseError.executeFailed("Не удалось подтвердить финальное состояние документа")
         }
 
         let finalizedLines = try businessDocumentLines(documentId: documentId)
@@ -123,6 +147,18 @@ extension AppRepository {
 
         try db.execute("COMMIT")
         committed = true
+    }
+
+    func finalizeDocumentWithSnapshot(
+        documentId: Int64,
+        templateId: Int64?,
+        snapshotBuilder: (BusinessDocument, [BusinessDocumentLine]) throws -> String
+    ) throws {
+        try performDocumentFinalizationWrites(
+            documentId: documentId,
+            templateId: templateId,
+            snapshotBuilder: snapshotBuilder
+        )
     }
 
     func businessDocuments() throws -> [BusinessDocument] {
@@ -174,28 +210,32 @@ extension AppRepository {
         }
     }
 
-    private func nextDocumentNumber(for documentId: Int64) throws -> String {
-        var type = ""
-        try db.withStatement("SELECT type FROM business_documents WHERE id=?") { s in
-            sqlite3_bind_int64(s, 1, documentId)
-            if sqlite3_step(s) == SQLITE_ROW { type = text2(s, 0) }
-        }
-        var seriesId: Int64 = 0
-        var prefix = "DOC"
-        var next = 1
-        try db.withStatement("SELECT id,prefix,next_number FROM document_series WHERE document_type=?") { s in
-            bind2(s, 1, type)
-            if sqlite3_step(s) == SQLITE_ROW {
-                seriesId = sqlite3_column_int64(s, 0); prefix = text2(s, 1); next = Int(sqlite3_column_int(s, 2))
+    private func requireActiveSeries(for documentType: String) throws -> DocumentSeries {
+        var activeSeries: DocumentSeries?
+        var activeCount = 0
+        try db.withStatement("SELECT id,prefix,next_number FROM document_series WHERE document_type=? AND active=1 ORDER BY id") { s in
+            bind2(s, 1, documentType)
+            while sqlite3_step(s) == SQLITE_ROW {
+                activeCount += 1
+                if activeSeries == nil {
+                    activeSeries = DocumentSeries(
+                        id: sqlite3_column_int64(s, 0),
+                        documentType: documentType,
+                        prefix: text2(s, 1),
+                        nextNumber: Int(sqlite3_column_int(s, 2)),
+                        active: true
+                    )
+                }
             }
         }
-        let number = "\(prefix)-\(String(format: "%06d", next))"
-        if seriesId != 0 {
-            try db.withStatement("UPDATE document_series SET next_number=? WHERE id=?") { s in
-                sqlite3_bind_int(s, 1, Int32(next + 1)); sqlite3_bind_int64(s, 2, seriesId); try step2(s)
-            }
+
+        guard let activeSeries else {
+            throw DatabaseError.executeFailed("Нет активной серии для типа документа '\(documentType)'")
         }
-        return number
+        guard activeCount == 1 else {
+            throw DatabaseError.executeFailed("Для типа документа '\(documentType)' должна быть ровно одна активная серия")
+        }
+        return activeSeries
     }
 
     private func fetch2<T>(_ sql: String, _ map: (OpaquePointer) -> T) throws -> [T] {
