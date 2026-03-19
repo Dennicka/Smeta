@@ -30,6 +30,12 @@ targets.insert(
     ),
     at: 1
 )
+targets.append(
+    .testTarget(
+        name: "SmetaAppStartupTests",
+        dependencies: ["SmetaApp"]
+    )
+)
 #endif
 
 let package = Package(

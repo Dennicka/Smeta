@@ -18,6 +18,12 @@ struct Published<Value> {
 
 @MainActor
 final class AppViewModel: ObservableObject {
+    enum BootstrapStatus: Equatable {
+        case idle
+        case success
+        case failed(String)
+    }
+
     @Published var clients: [Client] = []
     @Published var properties: [PropertyObject] = []
     @Published var projects: [Project] = []
@@ -41,6 +47,7 @@ final class AppViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var errorMessage: String?
     @Published var infoMessage: String?
+    @Published var bootstrapStatus: BootstrapStatus = .idle
 
     @Published var selectedWorksByRoom: [Int64: [WorkCatalogItem]] = [:]
     @Published var selectedMaterialsByRoom: [Int64: [MaterialCatalogItem]] = [:]
@@ -80,13 +87,18 @@ final class AppViewModel: ObservableObject {
 
     func bootstrap() {
         do {
-            try repository.seedIfNeeded()
-            try repository.seedStage2Defaults()
-            try reloadAll()
+            try performBootstrap()
+            bootstrapStatus = .success
             errorMessage = nil
         } catch {
+            bootstrapStatus = .failed(error.localizedDescription)
             present(error: error, prefix: "Ошибка инициализации")
         }
+    }
+
+    func performBootstrap() throws {
+        try repository.performLaunchBootstrapWrites()
+        try reloadAll()
     }
 
     private func present(error: Error, prefix: String) {
@@ -94,31 +106,111 @@ final class AppViewModel: ObservableObject {
     }
 
     func reloadAll() throws {
+        let snapshot = StateSnapshot.capture(from: self)
         let selectedProjectId = selectedProject?.id
-        clients = try repository.clients()
-        properties = try repository.fetchWithClientProperties()
-        projects = try repository.projects()
-        rooms = try repository.rooms()
-        surfacesByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.surfaces(roomId: $0.id)) })
-        openingsByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.openings(roomId: $0.id)) })
-        works = try repository.workItems()
-        materials = try repository.materialItems()
-        speedProfiles = try repository.speedProfiles()
-        templates = try repository.templates()
-        generatedDocuments = try repository.generatedDocuments()
-        businessDocuments = try repository.businessDocuments()
-        documentSeries = try repository.documentSeries()
-        taxProfiles = try repository.taxProfiles()
-        calculationRules = try repository.calculationRules()
-        suppliers = (try? repository.suppliers()) ?? []
-        receivableBuckets = stage5Service.receivablesBuckets((try? repository.receivablesDocuments()) ?? [])
-        selectedProject = selectedProjectId.flatMap { id in
-            projects.first(where: { $0.id == id })
-        } ?? projects.first
-        try synchronizeSelectedSpeedWithSelectedProject(persistFallbackToProject: true, context: "reload")
-        if let project = selectedProject {
-            refreshProjectProfitability(projectId: project.id, showMissingEstimateError: false)
-            projectNotes = (try? repository.projectNotes(projectId: project.id)) ?? []
+        do {
+            clients = try repository.clients()
+            properties = try repository.fetchWithClientProperties()
+            projects = try repository.projects()
+            rooms = try repository.rooms()
+            surfacesByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.surfaces(roomId: $0.id)) })
+            openingsByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.openings(roomId: $0.id)) })
+            works = try repository.workItems()
+            materials = try repository.materialItems()
+            speedProfiles = try repository.speedProfiles()
+            templates = try repository.templates()
+            generatedDocuments = try repository.generatedDocuments()
+            businessDocuments = try repository.businessDocuments()
+            documentSeries = try repository.documentSeries()
+            taxProfiles = try repository.taxProfiles()
+            calculationRules = try repository.calculationRules()
+            suppliers = (try? repository.suppliers()) ?? []
+            receivableBuckets = stage5Service.receivablesBuckets((try? repository.receivablesDocuments()) ?? [])
+            selectedProject = selectedProjectId.flatMap { id in
+                projects.first(where: { $0.id == id })
+            } ?? projects.first
+            try synchronizeSelectedSpeedWithSelectedProject(persistFallbackToProject: true, context: "reload")
+            if let project = selectedProject {
+                refreshProjectProfitability(projectId: project.id, showMissingEstimateError: false)
+                projectNotes = (try? repository.projectNotes(projectId: project.id)) ?? []
+            } else {
+                projectNotes = []
+            }
+        } catch {
+            snapshot.restore(to: self)
+            throw error
+        }
+    }
+
+    private struct StateSnapshot {
+        let clients: [Client]
+        let properties: [PropertyObject]
+        let projects: [Project]
+        let rooms: [Room]
+        let works: [WorkCatalogItem]
+        let materials: [MaterialCatalogItem]
+        let speedProfiles: [SpeedProfile]
+        let surfacesByRoom: [Int64: [Surface]]
+        let openingsByRoom: [Int64: [Opening]]
+        let templates: [DocumentTemplate]
+        let generatedDocuments: [GeneratedDocument]
+        let businessDocuments: [BusinessDocument]
+        let documentSeries: [DocumentSeries]
+        let taxProfiles: [TaxProfile]
+        let suppliers: [Supplier]
+        let receivableBuckets: [ReceivableBucket]
+        let selectedProjectProfitability: ProjectProfitability?
+        let projectNotes: [ProjectNote]
+        let selectedProject: Project?
+        let selectedSpeedId: Int64
+        let calculationRules: CalculationRules
+
+        static func capture(from vm: AppViewModel) -> StateSnapshot {
+            StateSnapshot(clients: vm.clients,
+                          properties: vm.properties,
+                          projects: vm.projects,
+                          rooms: vm.rooms,
+                          works: vm.works,
+                          materials: vm.materials,
+                          speedProfiles: vm.speedProfiles,
+                          surfacesByRoom: vm.surfacesByRoom,
+                          openingsByRoom: vm.openingsByRoom,
+                          templates: vm.templates,
+                          generatedDocuments: vm.generatedDocuments,
+                          businessDocuments: vm.businessDocuments,
+                          documentSeries: vm.documentSeries,
+                          taxProfiles: vm.taxProfiles,
+                          suppliers: vm.suppliers,
+                          receivableBuckets: vm.receivableBuckets,
+                          selectedProjectProfitability: vm.selectedProjectProfitability,
+                          projectNotes: vm.projectNotes,
+                          selectedProject: vm.selectedProject,
+                          selectedSpeedId: vm.selectedSpeedId,
+                          calculationRules: vm.calculationRules)
+        }
+
+        func restore(to vm: AppViewModel) {
+            vm.clients = clients
+            vm.properties = properties
+            vm.projects = projects
+            vm.rooms = rooms
+            vm.works = works
+            vm.materials = materials
+            vm.speedProfiles = speedProfiles
+            vm.surfacesByRoom = surfacesByRoom
+            vm.openingsByRoom = openingsByRoom
+            vm.templates = templates
+            vm.generatedDocuments = generatedDocuments
+            vm.businessDocuments = businessDocuments
+            vm.documentSeries = documentSeries
+            vm.taxProfiles = taxProfiles
+            vm.suppliers = suppliers
+            vm.receivableBuckets = receivableBuckets
+            vm.selectedProjectProfitability = selectedProjectProfitability
+            vm.projectNotes = projectNotes
+            vm.selectedProject = selectedProject
+            vm.selectedSpeedId = selectedSpeedId
+            vm.calculationRules = calculationRules
         }
     }
 
