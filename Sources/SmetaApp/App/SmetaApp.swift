@@ -30,6 +30,7 @@ private final class AppLauncher: ObservableObject {
     let launchErrorMessage: String?
 
     init() {
+        let environment = ProcessInfo.processInfo.environment
         let runner = StartupBootstrapRunner(createViewModel: {
             let db = try SQLiteDatabase()
             try db.initializeSchema()
@@ -37,7 +38,15 @@ private final class AppLauncher: ObservableObject {
             let backup = BackupService(db: db)
             return AppViewModel(repository: repo, backupService: backup)
         }, bootstrapViewModel: { vm in
+            if environment["SMETA_FORCE_BOOTSTRAP_FAILURE"] == "1" {
+                throw NSError(
+                    domain: "Smeta.RuntimeProbe",
+                    code: 9001,
+                    userInfo: [NSLocalizedDescriptionKey: "forced bootstrap failure for runtime verification"]
+                )
+            }
             try vm.performBootstrap()
+            try vm.ensureUISmokeBootstrapDataIfNeeded()
             vm.bootstrapStatus = .success
         })
 
@@ -49,6 +58,11 @@ private final class AppLauncher: ObservableObject {
         case .failed(let message):
             launchErrorMessage = "Ошибка запуска: \(message)"
         }
+
+        RuntimeSmokeProbe.maybeRun(
+            status: result.status,
+            viewModel: result.viewModel
+        )
     }
 }
 
@@ -60,6 +74,7 @@ private struct StartupFailureView: View {
             Text("Не удалось запустить приложение")
                 .font(.title2)
                 .bold()
+                .accessibilityIdentifier("smoke.startup.failure.title")
             Text(message)
                 .foregroundColor(.red)
                 .font(.body)
