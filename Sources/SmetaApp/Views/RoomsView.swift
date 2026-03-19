@@ -30,7 +30,7 @@ struct RoomsView: View {
         if let project = vm.selectedProject {
             Text("Проект: \(project.name)").font(.headline)
             addRoomSection(projectId: project.id)
-            roomsTable(projectId: project.id)
+            roomsList(projectId: project.id)
             openingsSection(projectId: project.id)
         } else {
             Text("Сначала выберите проект")
@@ -59,26 +59,43 @@ struct RoomsView: View {
         }
     }
 
-    private func roomsTable(projectId: Int64) -> some View {
-        Table(vm.rooms.filter { $0.projectId == projectId }) {
-            TableColumn("Название", value: \.name)
-            TableColumn("Тип") { Text($0.roomType) }
-            TableColumn("Пол") { Text(String(format: "%.1f", $0.floorArea)) }
-            TableColumn("Стены (авто)") { Text(String(format: "%.1f", $0.wallAreaAuto)) }
-            TableColumn("Корр.") { Text(String(format: "%.1f", $0.wallAreaManualAdjustment)) }
-            TableColumn("Стены (итог)") { Text(String(format: "%.1f", $0.wallAreaTotal)).bold() }
-            TableColumn("Высота") { Text(String(format: "%.1f", $0.height)) }
-            TableColumn("Действия") { room in
+    private func roomsList(projectId: Int64) -> some View {
+        List(filteredRooms(projectId)) { room in
+            roomRow(room)
+        }
+    }
+
+    private func filteredRooms(_ projectId: Int64) -> [Room] {
+        vm.rooms.filter { $0.projectId == projectId }
+    }
+
+    private func roomRow(_ room: Room) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(room.name).bold()
+                if !room.roomType.isEmpty {
+                    Text("(\(room.roomType))").foregroundStyle(.secondary)
+                }
+                Spacer()
                 Button("Дублировать") { vm.duplicateRoom(room) }
             }
+            HStack(spacing: 10) {
+                Text("Пол: \(format1(room.floorArea))")
+                Text("Стены (авто): \(format1(room.wallAreaAuto))")
+                Text("Корр.: \(format1(room.wallAreaManualAdjustment))")
+                Text("Стены (итог): \(format1(room.wallAreaTotal))").bold()
+                Text("Высота: \(format1(room.height))")
+            }
+            .font(.caption)
         }
+        .padding(.vertical, 2)
     }
 
     private func openingsSection(projectId: Int64) -> some View {
         VStack(alignment: .leading) {
             Divider().padding(.vertical, 4)
             Text("Проёмы").font(.headline)
-            ForEach(vm.rooms.filter { $0.projectId == projectId }) { room in
+            ForEach(filteredRooms(projectId)) { room in
                 openingRow(room: room)
             }
         }
@@ -110,10 +127,24 @@ struct RoomsView: View {
             Text("Нет проёмов").font(.caption)
         } else {
             ForEach(openings) { opening in
-                Text("• \(opening.name) \(opening.width, specifier: "%.2f")×\(opening.height, specifier: "%.2f") ×\(opening.count) | вычет: \(opening.subtractFromWallArea ? "да" : "нет") | площадь: \(opening.area, specifier: "%.2f")")
-                    .font(.caption)
+                openingLine(opening)
             }
         }
+    }
+
+    private func openingLine(_ opening: Opening) -> some View {
+        HStack(spacing: 8) {
+            Text("• \(opening.name)")
+            Text("\(opening.width, specifier: "%.2f")×\(opening.height, specifier: "%.2f")")
+            Text("×\(opening.count)")
+            Text("вычет: \(opening.subtractFromWallArea ? "да" : "нет")")
+            Text("площадь: \(opening.area, specifier: "%.2f")")
+        }
+        .font(.caption)
+    }
+
+    private func format1(_ value: Double) -> String {
+        String(format: "%.1f", value)
     }
 }
 #endif
