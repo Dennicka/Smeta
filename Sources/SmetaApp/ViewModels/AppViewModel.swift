@@ -21,7 +21,22 @@ protocol OffertDestinationProviding {
     func chooseDestination(defaultFileName: String) throws -> URL?
 }
 
+protocol BusinessDocumentPDFGenerating {
+    func generateBusinessDocumentPDF(title: String, body: String, saveURL: URL) throws
+}
+
+extension PDFDocumentService: BusinessDocumentPDFGenerating {}
+
+protocol BusinessDocumentDestinationProviding {
+    func chooseDestination(defaultFileName: String) throws -> URL?
+}
+
 struct OffertContourFailureInjection {
+    var persistentWriteFailure: (() throws -> Void)?
+    var beforePromoteFailure: (() throws -> Void)?
+}
+
+struct BusinessDocumentExportFailureInjection {
     var persistentWriteFailure: (() throws -> Void)?
     var beforePromoteFailure: (() throws -> Void)?
 }
@@ -38,6 +53,22 @@ private struct DefaultOffertDestinationProvider: OffertDestinationProviding {
         return panel.url
         #else
         throw NSError(domain: "OffertGeneration", code: 1, userInfo: [NSLocalizedDescriptionKey: "Генерация Offert доступна только на AppKit-платформах"])
+        #endif
+    }
+}
+
+private struct DefaultBusinessDocumentDestinationProvider: BusinessDocumentDestinationProviding {
+    func chooseDestination(defaultFileName: String) throws -> URL? {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = defaultFileName
+        panel.allowedFileTypes = ["pdf"]
+        guard panel.runModal() == .OK else {
+            return nil
+        }
+        return panel.url
+        #else
+        throw NSError(domain: "DocumentExport", code: 1, userInfo: [NSLocalizedDescriptionKey: "Экспорт PDF доступен только на AppKit-платформах"])
         #endif
     }
 }
@@ -109,7 +140,7 @@ final class AppViewModel: ObservableObject {
 
     private let repository: AppRepository
     private let calculator = EstimateCalculator()
-    private let pdfService = PDFDocumentService()
+    private let businessDocumentPDFGenerator: BusinessDocumentPDFGenerating
     private let offertPDFGenerator: OffertPDFGenerating
     private let backupService: BackupService
     private let stage5Service = Stage5Service()
@@ -120,19 +151,27 @@ final class AppViewModel: ObservableObject {
     private let exportArtifacts = ExportArtifactCoordinator()
     private let offertDestinationProvider: OffertDestinationProviding
     private let offertFailureInjection: OffertContourFailureInjection?
+    private let businessDocumentDestinationProvider: BusinessDocumentDestinationProviding
+    private let businessDocumentExportFailureInjection: BusinessDocumentExportFailureInjection?
 
     init(
         repository: AppRepository,
         backupService: BackupService,
         offertPDFGenerator: OffertPDFGenerating = PDFDocumentService(),
         offertDestinationProvider: OffertDestinationProviding = DefaultOffertDestinationProvider(),
-        offertFailureInjection: OffertContourFailureInjection? = nil
+        offertFailureInjection: OffertContourFailureInjection? = nil,
+        businessDocumentPDFGenerator: BusinessDocumentPDFGenerating = PDFDocumentService(),
+        businessDocumentDestinationProvider: BusinessDocumentDestinationProviding = DefaultBusinessDocumentDestinationProvider(),
+        businessDocumentExportFailureInjection: BusinessDocumentExportFailureInjection? = nil
     ) {
         self.repository = repository
         self.backupService = backupService
         self.offertPDFGenerator = offertPDFGenerator
         self.offertDestinationProvider = offertDestinationProvider
         self.offertFailureInjection = offertFailureInjection
+        self.businessDocumentPDFGenerator = businessDocumentPDFGenerator
+        self.businessDocumentDestinationProvider = businessDocumentDestinationProvider
+        self.businessDocumentExportFailureInjection = businessDocumentExportFailureInjection
     }
 
     func bootstrap() {
@@ -863,45 +902,35 @@ final class AppViewModel: ObservableObject {
             let snapshots = try repository.documentSnapshots(documentId: doc.id)
             let payload = try documentExportPipeline.buildPayload(document: doc, lines: lines, snapshots: snapshots)
 
-            #if canImport(AppKit)
-            let panel = NSSavePanel()
             let identifier = doc.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "DRAFT-\(doc.id)" : doc.number
-            panel.nameFieldStringValue = "\(doc.type)-\(identifier).pdf"
-            panel.allowedFileTypes = ["pdf"]
-            guard panel.runModal() == .OK, let finalURL = panel.url else {
+            let defaultFileName = "\(doc.type)-\(identifier).pdf"
+            guard let finalURL = try businessDocumentDestinationProvider.chooseDestination(defaultFileName: defaultFileName) else {
                 infoMessage = "Экспорт PDF отменён пользователем"
                 return
             }
-            #else
-            throw NSError(domain: "DocumentExport", code: 1, userInfo: [NSLocalizedDescriptionKey: "Экспорт PDF доступен только на AppKit-платформах"])
-            #endif
 
             let tempURL = pdfFileState.temporaryPDFURL(near: finalURL, prefix: "business-document-pending")
             var didMoveToFinal = false
             var backupURL: URL?
-            var committed = false
-            var beganTransaction = false
             do {
-                try pdfService.generateBusinessDocumentPDF(title: payload.title, body: payload.body, saveURL: tempURL)
-                try repository.db.execute("BEGIN IMMEDIATE TRANSACTION")
-                beganTransaction = true
-
-                try repository.logExport(kind: "business_document_pdf", scope: "document_\(doc.id)_\(doc.type)_\(payload.source.rawValue)", path: finalURL.path)
-                backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
-                try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
-                didMoveToFinal = true
-                try repository.db.execute("COMMIT")
-                committed = true
+                try businessDocumentPDFGenerator.generateBusinessDocumentPDF(title: payload.title, body: payload.body, saveURL: tempURL)
+                try repository.performBusinessDocumentPDFExportWrites(
+                    payload: AppRepository.BusinessDocumentPDFExportWritePayload(
+                        exportKind: "business_document_pdf",
+                        exportScope: "document_\(doc.id)_\(doc.type)_\(payload.source.rawValue)",
+                        finalPath: finalURL.path
+                    ),
+                    beforeCommit: {
+                        backupURL = try pdfFileState.backupExistingFileIfNeeded(at: finalURL)
+                        try self.businessDocumentExportFailureInjection?.beforePromoteFailure?()
+                        try pdfFileState.promotePreparedPDF(from: tempURL, to: finalURL)
+                        didMoveToFinal = true
+                    },
+                    failureInjection: businessDocumentExportFailureInjection?.persistentWriteFailure
+                )
             } catch {
                 var recoveryFailures: [String] = []
-                if beganTransaction && !committed {
-                    do {
-                        try repository.db.execute("ROLLBACK")
-                    } catch {
-                        recoveryFailures.append("rollback БД не выполнен: \(error.localizedDescription)")
-                    }
-                }
-                if beganTransaction {
+                if didMoveToFinal || backupURL != nil {
                     do {
                         try pdfFileState.recoverAfterFailedCommit(finalURL: finalURL, backupURL: backupURL, didPromote: didMoveToFinal)
                     } catch {

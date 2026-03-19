@@ -12,7 +12,7 @@ rg -n "COMMIT" Sources/SmetaApp/Repositories/AppRepository.swift >/dev/null
 echo "[check] save contour uses repository transaction and file promotion before commit"
 rg -n "performOffertGenerationWrites" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
 rg -n "offertPDFGenerator\\.generateOffertSwedish" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
-rg -n "pdfService\\.generateBusinessDocumentPDF" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
+rg -n "businessDocumentPDFGenerator\\.generateBusinessDocumentPDF|pdfService\\.generateBusinessDocumentPDF" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
 rg -n "promotePreparedPDF" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
 rg -n "recoverAfterFailedCommit" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
 rg -n "removeTemporaryFileIfPresent" Sources/SmetaApp/ViewModels/AppViewModel.swift >/dev/null
