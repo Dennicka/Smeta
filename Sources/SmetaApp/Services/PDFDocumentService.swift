@@ -43,4 +43,21 @@ final class PDFDocumentService {
     }
 
 }
+#else
+import Foundation
+
+final class PDFDocumentService {
+    func generateOffertSwedish(template: DocumentTemplate,
+                               company: Company,
+                               client: Client,
+                               project: Project,
+                               result: CalculationResult,
+                               saveURL: URL) throws {
+        throw NSError(domain: "PDFDocumentService", code: 1, userInfo: [NSLocalizedDescriptionKey: "PDF generation is unavailable on this platform"])
+    }
+
+    func generateBusinessDocumentPDF(title: String, body: String, saveURL: URL) throws {
+        throw NSError(domain: "PDFDocumentService", code: 1, userInfo: [NSLocalizedDescriptionKey: "PDF generation is unavailable on this platform"])
+    }
+}
 #endif
