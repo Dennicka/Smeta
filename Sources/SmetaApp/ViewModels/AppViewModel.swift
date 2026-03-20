@@ -221,6 +221,16 @@ final class AppViewModel: ObservableObject {
             openingsByRoom = Dictionary(uniqueKeysWithValues: try rooms.map { ($0.id, try repository.openings(roomId: $0.id)) })
             works = try repository.workItems()
             materials = try repository.materialItems()
+            selectedWorksByRoom = [:]
+            selectedMaterialsByRoom = [:]
+            let workAssignments = try repository.roomWorkAssignments()
+            let materialAssignments = try repository.roomMaterialAssignments()
+            selectedWorksByRoom = Dictionary(uniqueKeysWithValues: workAssignments.map { roomId, workIds in
+                (roomId, works.filter { workIds.contains($0.id) })
+            })
+            selectedMaterialsByRoom = Dictionary(uniqueKeysWithValues: materialAssignments.map { roomId, materialIds in
+                (roomId, materials.filter { materialIds.contains($0.id) })
+            })
             speedProfiles = try repository.speedProfiles()
             templates = try repository.templates()
             generatedDocuments = try repository.generatedDocuments()
@@ -265,6 +275,8 @@ final class AppViewModel: ObservableObject {
         let receivableBuckets: [ReceivableBucket]
         let selectedProjectProfitability: ProjectProfitability?
         let projectNotes: [ProjectNote]
+        let selectedWorksByRoom: [Int64: [WorkCatalogItem]]
+        let selectedMaterialsByRoom: [Int64: [MaterialCatalogItem]]
         let selectedProject: Project?
         let selectedSpeedId: Int64
         let calculationRules: CalculationRules
@@ -289,6 +301,8 @@ final class AppViewModel: ObservableObject {
                           receivableBuckets: vm.receivableBuckets,
                           selectedProjectProfitability: vm.selectedProjectProfitability,
                           projectNotes: vm.projectNotes,
+                          selectedWorksByRoom: vm.selectedWorksByRoom,
+                          selectedMaterialsByRoom: vm.selectedMaterialsByRoom,
                           selectedProject: vm.selectedProject,
                           selectedSpeedId: vm.selectedSpeedId,
                           calculationRules: vm.calculationRules)
@@ -314,49 +328,171 @@ final class AppViewModel: ObservableObject {
             vm.receivableBuckets = receivableBuckets
             vm.selectedProjectProfitability = selectedProjectProfitability
             vm.projectNotes = projectNotes
+            vm.selectedWorksByRoom = selectedWorksByRoom
+            vm.selectedMaterialsByRoom = selectedMaterialsByRoom
             vm.selectedProject = selectedProject
             vm.selectedSpeedId = selectedSpeedId
             vm.calculationRules = calculationRules
         }
     }
 
-    func addClient(name: String, email: String, phone: String, address: String) {
+    @discardableResult
+    func addClient(name: String, email: String, phone: String, address: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { errorMessage = "Имя клиента обязательно"; return }
+        guard !trimmed.isEmpty else { errorMessage = "Имя клиента обязательно"; return false }
         do {
             _ = try repository.insertClient(Client(id: 0, name: trimmed, email: email, phone: phone, address: address))
             infoMessage = "Клиент сохранён"
             try reloadAll()
+            return true
         } catch {
             errorMessage = "Не удалось сохранить клиента: \(error.localizedDescription)"
+            return false
+        }
+    }
+    @discardableResult
+    func updateClient(_ client: Client) -> Bool {
+        let trimmedName = client.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Имя клиента обязательно"
+            return false
+        }
+        do {
+            var updatedClient = client
+            updatedClient.name = trimmedName
+            try repository.updateClient(updatedClient)
+            infoMessage = "Клиент обновлён"
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить клиента")
+            return false
+        }
+    }
+    func deleteClient(_ client: Client) {
+        do {
+            try repository.deleteClient(id: client.id)
+            if selectedProject?.clientId == client.id {
+                selectedProject = nil
+            }
+            infoMessage = "Клиент удалён"
+            try reloadAll()
+        } catch {
+            present(error: error, prefix: "Не удалось удалить клиента (проверьте зависимости)")
         }
     }
 
-    func addProperty(clientId: Int64, name: String, address: String) {
+    @discardableResult
+    func addProperty(clientId: Int64, name: String, address: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { errorMessage = "Название объекта обязательно"; return }
+        guard !trimmed.isEmpty else { errorMessage = "Название объекта обязательно"; return false }
         do {
             _ = try repository.insertProperty(PropertyObject(id: 0, clientId: clientId, name: trimmed, address: address))
             infoMessage = "Объект сохранён"
             try reloadAll()
+            return true
         } catch {
             errorMessage = "Не удалось сохранить объект: \(error.localizedDescription)"
+            return false
+        }
+    }
+    @discardableResult
+    func updateProperty(_ property: PropertyObject) -> Bool {
+        let trimmedName = property.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Название объекта обязательно"
+            return false
+        }
+        do {
+            var updatedProperty = property
+            updatedProperty.name = trimmedName
+            try repository.updateProperty(updatedProperty)
+            infoMessage = "Объект обновлён"
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить объект")
+            return false
+        }
+    }
+    func deleteProperty(_ property: PropertyObject) {
+        do {
+            try repository.deleteProperty(id: property.id)
+            infoMessage = "Объект удалён"
+            try reloadAll()
+        } catch {
+            present(error: error, prefix: "Не удалось удалить объект (проверьте зависимости)")
         }
     }
 
-    func addProject(clientId: Int64, propertyId: Int64, name: String) {
+    @discardableResult
+    func addProject(clientId: Int64, propertyId: Int64, name: String) -> Bool {
+        let defaultSpeed = speedProfiles.first?.id ?? resolvedSpeedIdForNewProject()
+        return addProject(clientId: clientId, propertyId: propertyId, speedProfileId: defaultSpeed, pricingMode: PricingMode.fixed.rawValue, isDraft: true, name: name)
+    }
+
+    @discardableResult
+    func addProject(clientId: Int64, propertyId: Int64, speedProfileId: Int64, pricingMode: String, isDraft: Bool, name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { errorMessage = "Название проекта обязательно"; return }
+        guard !trimmed.isEmpty else { errorMessage = "Название проекта обязательно"; return false }
         do {
-            let speed = resolvedSpeedIdForNewProject()
-            let projectId = try repository.insertProject(Project(id: 0, clientId: clientId, propertyId: propertyId, name: trimmed, speedProfileId: speed, createdAt: Date()))
+            let normalizedPricingMode = try validatedPricingMode(pricingMode)
+            try validateProjectReferences(clientId: clientId, propertyId: propertyId, speedProfileId: speedProfileId)
+            let projectId = try repository.insertProject(
+                Project(
+                    id: 0,
+                    clientId: clientId,
+                    propertyId: propertyId,
+                    name: trimmed,
+                    speedProfileId: speedProfileId,
+                    createdAt: Date(),
+                    pricingMode: normalizedPricingMode,
+                    isDraft: isDraft
+                )
+            )
             infoMessage = "Проект создан"
             try reloadAll()
             if let inserted = projects.first(where: { $0.id == projectId }) {
                 try selectProject(inserted)
             }
+            return true
         } catch {
             errorMessage = "Не удалось создать проект: \(error.localizedDescription)"
+            return false
+        }
+    }
+    @discardableResult
+    func updateProject(_ project: Project) -> Bool {
+        let trimmedName = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Название проекта обязательно"
+            return false
+        }
+        do {
+            let normalizedPricingMode = try validatedPricingMode(project.pricingMode)
+            try validateProjectReferences(clientId: project.clientId, propertyId: project.propertyId, speedProfileId: project.speedProfileId)
+            var updatedProject = project
+            updatedProject.name = trimmedName
+            updatedProject.pricingMode = normalizedPricingMode
+            try repository.updateProject(updatedProject)
+            infoMessage = "Проект обновлён"
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить проект")
+            return false
+        }
+    }
+    func deleteProject(_ project: Project) {
+        do {
+            try repository.deleteProject(id: project.id)
+            if selectedProject?.id == project.id {
+                selectedProject = nil
+            }
+            infoMessage = "Проект удалён"
+            try reloadAll()
+        } catch {
+            present(error: error, prefix: "Не удалось удалить проект (проверьте зависимости)")
         }
     }
 
@@ -389,19 +525,13 @@ final class AppViewModel: ObservableObject {
     }
 
     func addRoom(projectId: Int64, name: String, area: Double, height: Double, length: Double = 0, width: Double = 0, manualWallAdjustment: Double = 0, roomType: String = "") {
-        let floorArea = area > 0 ? area : (length > 0 && width > 0 ? length * width : 0)
+        let geometry = deriveRoomGeometry(area: area, length: length, width: width, height: height, manualWallAdjustment: manualWallAdjustment)
+        let floorArea = geometry.floorArea
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { errorMessage = "Название помещения обязательно"; return }
         guard floorArea > 0, height > 0 else { errorMessage = "Площадь и высота должны быть больше нуля"; return }
-        let wallAuto = length > 0 && width > 0 ? (2 * (length + width) * height) : floorArea * 2.8
-        let room = Room(id: 0, projectId: projectId, name: name, area: floorArea, height: height, roomType: roomType, length: length, width: width, ceilingArea: floorArea, wallAreaAuto: wallAuto, wallAreaManualAdjustment: manualWallAdjustment)
+        let room = Room(id: 0, projectId: projectId, name: name, area: floorArea, height: height, roomType: roomType, length: length, width: width, ceilingArea: geometry.ceilingArea, wallAreaAuto: geometry.wallAreaAuto, wallAreaManualAdjustment: manualWallAdjustment)
         do {
-            let roomId = try repository.insertRoom(room)
-            try repository.replaceSurfaces(roomId: roomId, surfaces: [
-                Surface(id: 0, roomId: roomId, type: "wall", name: "Стены", area: wallAuto, perimeter: length > 0 && width > 0 ? 2 * (length + width) : 0, isCustom: false, source: "auto", manualAdjustment: manualWallAdjustment),
-                Surface(id: 0, roomId: roomId, type: "ceiling", name: "Потолок", area: floorArea, perimeter: 0, isCustom: false, source: "auto", manualAdjustment: 0),
-                Surface(id: 0, roomId: roomId, type: "floor", name: "Пол", area: floorArea, perimeter: 0, isCustom: false, source: "auto", manualAdjustment: 0),
-                Surface(id: 0, roomId: roomId, type: "plinth", name: "Плинтус", area: 0, perimeter: length > 0 && width > 0 ? 2 * (length + width) : 0, isCustom: false, source: "auto", manualAdjustment: 0)
-            ])
+            _ = try repository.createRoomWithAutoSurfaces(room)
             try reloadAll()
         } catch { errorMessage = "Не удалось сохранить помещение: \(error.localizedDescription)" }
     }
@@ -409,19 +539,287 @@ final class AppViewModel: ObservableObject {
     func duplicateRoom(_ room: Room) {
         addRoom(projectId: room.projectId, name: room.name + " (копия)", area: room.area, height: room.height, length: room.length, width: room.width, manualWallAdjustment: room.wallAreaManualAdjustment, roomType: room.roomType)
     }
+    @discardableResult
+    func updateRoom(_ room: Room) -> Bool {
+        do {
+            guard !room.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                errorMessage = "Название помещения обязательно"
+                return false
+            }
+            guard room.height > 0 else {
+                errorMessage = "Высота помещения должна быть больше нуля"
+                return false
+            }
+            let geometry = deriveRoomGeometry(area: room.area, length: room.length, width: room.width, height: room.height, manualWallAdjustment: room.wallAreaManualAdjustment)
+            guard geometry.floorArea > 0 else {
+                errorMessage = "Площадь помещения должна быть больше нуля"
+                return false
+            }
+            if let roomTemplateId = room.roomTemplateId, try !repository.roomTemplateExists(id: roomTemplateId) {
+                errorMessage = "Указан несуществующий RoomTemplate ID: \(roomTemplateId)"
+                return false
+            }
+            let updated = Room(id: room.id, projectId: room.projectId, name: room.name, area: geometry.floorArea, height: room.height, roomType: room.roomType, length: room.length, width: room.width, ceilingArea: geometry.ceilingArea, wallAreaAuto: geometry.wallAreaAuto, wallAreaManualAdjustment: room.wallAreaManualAdjustment, surfaceCondition: room.surfaceCondition, notes: room.notes, photoPath: room.photoPath, roomTemplateId: room.roomTemplateId)
+            try repository.updateRoomWithAutoSurfaces(updated)
+            infoMessage = "Помещение обновлено"
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить помещение")
+            return false
+        }
+    }
+    func deleteRoom(_ room: Room) {
+        do {
+            try repository.deleteRoom(id: room.id)
+            selectedWorksByRoom[room.id] = nil
+            selectedMaterialsByRoom[room.id] = nil
+            infoMessage = "Помещение удалено"
+            try reloadAll()
+        } catch {
+            present(error: error, prefix: "Не удалось удалить помещение")
+        }
+    }
 
     func addOpening(roomId: Int64, type: String, name: String, width: Double, height: Double, count: Int, subtract: Bool) {
         do { try repository.addOpening(Opening(id: 0, roomId: roomId, surfaceId: nil, type: type, name: name, width: width, height: height, count: count, subtractFromWallArea: subtract)); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить проём") }
     }
+    func deleteOpening(_ opening: Opening) {
+        do {
+            try repository.deleteOpening(id: opening.id)
+            infoMessage = "Проём удалён"
+            try reloadAll()
+        } catch {
+            present(error: error, prefix: "Не удалось удалить проём")
+        }
+    }
 
-    func addWork(_ item: WorkCatalogItem) { do { _ = try repository.insertWorkItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить работу") } }
-    func updateWork(_ item: WorkCatalogItem) { do { try repository.updateWorkItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить работу") } }
-    func addMaterial(_ item: MaterialCatalogItem) { do { _ = try repository.insertMaterialItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить материал") } }
-    func updateMaterial(_ item: MaterialCatalogItem) { do { try repository.updateMaterialItem(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить материал") } }
-    func addSpeed(_ item: SpeedProfile) { do { _ = try repository.insertSpeedProfile(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить профиль скорости") } }
-    func updateSpeed(_ item: SpeedProfile) { do { try repository.updateSpeedProfile(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить профиль скорости") } }
-    func addTemplate(_ item: DocumentTemplate) { do { _ = try repository.insertTemplate(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось добавить шаблон") } }
-    func updateTemplate(_ item: DocumentTemplate) { do { try repository.updateTemplate(item); try reloadAll() } catch { present(error: error, prefix: "Не удалось обновить шаблон") } }
+    @discardableResult
+    func addWork(_ item: WorkCatalogItem) -> Bool {
+        do {
+            try validateWorkRequiredFields(item)
+            try validateWorkReferences(item)
+            _ = try repository.insertWorkItem(item)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось добавить работу")
+            return false
+        }
+    }
+    @discardableResult
+    func updateWork(_ item: WorkCatalogItem) -> Bool {
+        do {
+            try validateWorkRequiredFields(item)
+            try validateWorkReferences(item)
+            try repository.updateWorkItem(item)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить работу")
+            return false
+        }
+    }
+    func deleteWork(_ item: WorkCatalogItem) { do { try repository.deleteWorkItem(id: item.id); try reloadAll() } catch { present(error: error, prefix: "Не удалось удалить работу") } }
+    @discardableResult
+    func addMaterial(_ item: MaterialCatalogItem) -> Bool {
+        do {
+            try validateMaterialRequiredFields(item)
+            try validateMaterialReferences(item)
+            _ = try repository.insertMaterialItem(item)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось добавить материал")
+            return false
+        }
+    }
+    @discardableResult
+    func updateMaterial(_ item: MaterialCatalogItem) -> Bool {
+        do {
+            try validateMaterialRequiredFields(item)
+            try validateMaterialReferences(item)
+            try repository.updateMaterialItem(item)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить материал")
+            return false
+        }
+    }
+    func deleteMaterial(_ item: MaterialCatalogItem) { do { try repository.deleteMaterialItem(id: item.id); try reloadAll() } catch { present(error: error, prefix: "Не удалось удалить материал") } }
+    @discardableResult
+    func addSpeed(_ item: SpeedProfile) -> Bool {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Название профиля скорости обязательно"
+            return false
+        }
+        do {
+            var speed = item
+            speed.name = trimmedName
+            _ = try repository.insertSpeedProfile(speed)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось добавить профиль скорости")
+            return false
+        }
+    }
+    @discardableResult
+    func updateSpeed(_ item: SpeedProfile) -> Bool {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Название профиля скорости обязательно"
+            return false
+        }
+        do {
+            var updatedSpeed = item
+            updatedSpeed.name = trimmedName
+            try repository.updateSpeedProfile(updatedSpeed)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить профиль скорости")
+            return false
+        }
+    }
+    func deleteSpeed(_ item: SpeedProfile) { do { try repository.deleteSpeedProfile(id: item.id); try reloadAll() } catch { present(error: error, prefix: "Не удалось удалить профиль скорости") } }
+    @discardableResult
+    func addTemplate(_ item: DocumentTemplate) -> Bool {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Название шаблона обязательно"
+            return false
+        }
+        do {
+            var template = item
+            template.name = trimmedName
+            _ = try repository.insertTemplate(template)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось добавить шаблон")
+            return false
+        }
+    }
+    @discardableResult
+    func updateTemplate(_ item: DocumentTemplate) -> Bool {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Название шаблона обязательно"
+            return false
+        }
+        do {
+            var updatedTemplate = item
+            updatedTemplate.name = trimmedName
+            try repository.updateTemplate(updatedTemplate)
+            try reloadAll()
+            return true
+        } catch {
+            present(error: error, prefix: "Не удалось обновить шаблон")
+            return false
+        }
+    }
+    func deleteTemplate(_ item: DocumentTemplate) { do { try repository.deleteTemplate(id: item.id); try reloadAll() } catch { present(error: error, prefix: "Не удалось удалить шаблон") } }
+
+    func toggleWorkSelection(roomId: Int64, work: WorkCatalogItem) {
+        let current = selectedWorksByRoom[roomId, default: []]
+        var next = current
+        if let index = next.firstIndex(where: { $0.id == work.id }) {
+            next.remove(at: index)
+        } else {
+            next.append(work)
+        }
+        do {
+            try repository.replaceRoomWorkAssignments(roomId: roomId, workIds: next.map(\.id))
+            selectedWorksByRoom[roomId] = next
+        } catch {
+            selectedWorksByRoom[roomId] = current
+            present(error: error, prefix: "Не удалось сохранить назначения работ")
+        }
+    }
+    func toggleMaterialSelection(roomId: Int64, material: MaterialCatalogItem) {
+        let current = selectedMaterialsByRoom[roomId, default: []]
+        var next = current
+        if let index = next.firstIndex(where: { $0.id == material.id }) {
+            next.remove(at: index)
+        } else {
+            next.append(material)
+        }
+        do {
+            try repository.replaceRoomMaterialAssignments(roomId: roomId, materialIds: next.map(\.id))
+            selectedMaterialsByRoom[roomId] = next
+        } catch {
+            selectedMaterialsByRoom[roomId] = current
+            present(error: error, prefix: "Не удалось сохранить назначения материалов")
+        }
+    }
+
+    private func deriveRoomGeometry(area: Double, length: Double, width: Double, height: Double, manualWallAdjustment: Double) -> (floorArea: Double, ceilingArea: Double, wallAreaAuto: Double, wallAreaTotal: Double) {
+        let floorArea = (length > 0 && width > 0) ? (length * width) : area
+        let wallAreaAuto = (length > 0 && width > 0) ? (2 * (length + width) * height) : (max(0, floorArea) * 2.8)
+        let wallAreaTotal = max(0, wallAreaAuto + manualWallAdjustment)
+        return (max(0, floorArea), max(0, floorArea), max(0, wallAreaAuto), wallAreaTotal)
+    }
+
+    private func validatedPricingMode(_ rawValue: String) throws -> String {
+        guard PricingMode(rawValue: rawValue) != nil else {
+            throw NSError(domain: "AppViewModel.Validation", code: 102, userInfo: [NSLocalizedDescriptionKey: "Некорректный pricingMode: \(rawValue)"])
+        }
+        return rawValue
+    }
+
+    private func validateProjectReferences(clientId: Int64, propertyId: Int64, speedProfileId: Int64) throws {
+        guard try repository.client(id: clientId) != nil else {
+            throw NSError(domain: "AppViewModel.Validation", code: 100, userInfo: [NSLocalizedDescriptionKey: "Клиент с id=\(clientId) не найден"])
+        }
+        guard try repository.propertyBelongsToClient(propertyId: propertyId, clientId: clientId) else {
+            throw NSError(domain: "AppViewModel.Validation", code: 101, userInfo: [NSLocalizedDescriptionKey: "Объект id=\(propertyId) не принадлежит клиенту id=\(clientId)"])
+        }
+        guard try repository.speedProfileExists(id: speedProfileId) else {
+            throw NSError(domain: "AppViewModel.Validation", code: 103, userInfo: [NSLocalizedDescriptionKey: "Профиль скорости id=\(speedProfileId) не найден"])
+        }
+    }
+
+    private func validateWorkReferences(_ item: WorkCatalogItem) throws {
+        if let categoryId = item.categoryId, try !repository.workCategoryExists(id: categoryId) {
+            throw NSError(domain: "AppViewModel.Validation", code: 201, userInfo: [NSLocalizedDescriptionKey: "Category ID \(categoryId) не существует"])
+        }
+        if item.subcategoryId != nil, item.categoryId == nil {
+            throw NSError(domain: "AppViewModel.Validation", code: 203, userInfo: [NSLocalizedDescriptionKey: "Subcategory ID можно указать только вместе с Category ID"])
+        }
+        if let subcategoryId = item.subcategoryId, try !repository.workSubcategoryExists(id: subcategoryId, categoryId: item.categoryId) {
+            throw NSError(domain: "AppViewModel.Validation", code: 202, userInfo: [NSLocalizedDescriptionKey: "Subcategory ID \(subcategoryId) не существует или не соответствует выбранной категории"])
+        }
+    }
+
+    private func validateWorkRequiredFields(_ item: WorkCatalogItem) throws {
+        guard !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NSError(domain: "AppViewModel.Validation", code: 210, userInfo: [NSLocalizedDescriptionKey: "Название работы обязательно"])
+        }
+        guard !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NSError(domain: "AppViewModel.Validation", code: 211, userInfo: [NSLocalizedDescriptionKey: "Единица измерения работы обязательна"])
+        }
+    }
+
+    private func validateMaterialReferences(_ item: MaterialCatalogItem) throws {
+        if let categoryId = item.categoryId, try !repository.materialCategoryExists(id: categoryId) {
+            throw NSError(domain: "AppViewModel.Validation", code: 301, userInfo: [NSLocalizedDescriptionKey: "Category ID \(categoryId) не существует"])
+        }
+        if let supplierId = item.supplierId, try !repository.supplierExists(id: supplierId) {
+            throw NSError(domain: "AppViewModel.Validation", code: 302, userInfo: [NSLocalizedDescriptionKey: "Supplier ID \(supplierId) не существует"])
+        }
+    }
+
+    private func validateMaterialRequiredFields(_ item: MaterialCatalogItem) throws {
+        guard !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NSError(domain: "AppViewModel.Validation", code: 310, userInfo: [NSLocalizedDescriptionKey: "Название материала обязательно"])
+        }
+        guard !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NSError(domain: "AppViewModel.Validation", code: 311, userInfo: [NSLocalizedDescriptionKey: "Единица измерения материала обязательна"])
+        }
+    }
 
     func calculate() {
         guard let project = selectedProject else {

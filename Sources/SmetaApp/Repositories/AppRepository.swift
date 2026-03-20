@@ -1,6 +1,17 @@
 import Foundation
 import SQLite3
 
+enum RepositoryDomainError: LocalizedError {
+    case deleteBlocked(entity: String, reason: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .deleteBlocked(let entity, let reason):
+            return "Удаление \(entity) заблокировано: \(reason)"
+        }
+    }
+}
+
 final class AppRepository {
     struct OffertGenerationWritePayload {
         let estimate: Estimate
@@ -32,6 +43,8 @@ final class AppRepository {
         "estimates",
         "calculation_snapshots",
         "trim_elements",
+        "room_material_assignments",
+        "room_work_assignments",
         "openings",
         "surfaces",
         "rooms",
@@ -180,6 +193,17 @@ final class AppRepository {
             bind(s,1,c.name); bind(s,2,c.email); bind(s,3,c.phone); bind(s,4,c.address); sqlite3_bind_int64(s,5,c.id); try step(s)
         }
     }
+    func deleteClient(id: Int64) throws {
+        let propertiesCount = try scalarCount("SELECT COUNT(1) FROM properties WHERE client_id=?", bindValue: id)
+        let projectsCount = try scalarCount("SELECT COUNT(1) FROM projects WHERE client_id=?", bindValue: id)
+        guard propertiesCount == 0, projectsCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "клиента", reason: "есть связанные объекты (\(propertiesCount)) и/или проекты (\(projectsCount))")
+        }
+        try db.withStatement("DELETE FROM clients WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+    }
 
     func properties(for clientId: Int64? = nil) throws -> [PropertyObject] {
         let sql = clientId == nil ? "SELECT id,client_id,name,address FROM properties ORDER BY id DESC" : "SELECT id,client_id,name,address FROM properties WHERE client_id=? ORDER BY id DESC"
@@ -188,16 +212,43 @@ final class AppRepository {
         }
     }
 
+    func propertyBelongsToClient(propertyId: Int64, clientId: Int64) throws -> Bool {
+        try scalarCount("SELECT COUNT(1) FROM properties WHERE id=? AND client_id=?", bindValues: [propertyId, clientId]) > 0
+    }
+
     func insertProperty(_ p: PropertyObject) throws -> Int64 {
         try db.withStatement("INSERT INTO properties (client_id,name,address) VALUES (?,?,?)") { s in
             sqlite3_bind_int64(s,1,p.clientId); bind(s,2,p.name); bind(s,3,p.address); try step(s)
         }
         return db.lastInsertedRowID()
     }
+    func updateProperty(_ p: PropertyObject) throws {
+        try db.withStatement("UPDATE properties SET client_id=?,name=?,address=? WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, p.clientId)
+            bind(s, 2, p.name)
+            bind(s, 3, p.address)
+            sqlite3_bind_int64(s, 4, p.id)
+            try step(s)
+        }
+    }
+    func deleteProperty(id: Int64) throws {
+        let projectsCount = try scalarCount("SELECT COUNT(1) FROM projects WHERE property_id=?", bindValue: id)
+        guard projectsCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "объекта", reason: "есть связанные проекты (\(projectsCount))")
+        }
+        try db.withStatement("DELETE FROM properties WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+    }
 
     func speedProfiles() throws -> [SpeedProfile] { try fetch("SELECT id,name,coefficient,days_divider,sort_order FROM speed_profiles ORDER BY sort_order,id") { s in
         SpeedProfile(id: sqlite3_column_int64(s,0), name: text(s,1), coefficient: sqlite3_column_double(s,2), daysDivider: sqlite3_column_double(s,3), sortOrder: Int(sqlite3_column_int(s,4)))
     }}
+
+    func speedProfileExists(id: Int64) throws -> Bool {
+        try scalarCount("SELECT COUNT(1) FROM speed_profiles WHERE id=?", bindValue: id) > 0
+    }
     func insertSpeedProfile(_ profile: SpeedProfile) throws -> Int64 {
         try db.withStatement("INSERT INTO speed_profiles (name,coefficient,days_divider,sort_order) VALUES (?,?,?,?)") { s in
             bind(s,1,profile.name); sqlite3_bind_double(s,2,profile.coefficient); sqlite3_bind_double(s,3,profile.daysDivider); sqlite3_bind_int(s,4,Int32(profile.sortOrder)); try step(s)
@@ -279,6 +330,45 @@ final class AppRepository {
             try step(s)
         }
     }
+    func updateProject(_ project: Project) throws {
+        try db.withStatement("UPDATE projects SET client_id=?,property_id=?,name=?,speed_profile_id=?,pricing_mode=?,is_draft=? WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, project.clientId)
+            sqlite3_bind_int64(s, 2, project.propertyId)
+            bind(s, 3, project.name)
+            sqlite3_bind_int64(s, 4, project.speedProfileId)
+            bind(s, 5, project.pricingMode)
+            sqlite3_bind_int(s, 6, project.isDraft ? 1 : 0)
+            sqlite3_bind_int64(s, 7, project.id)
+            try step(s)
+        }
+    }
+    func deleteProject(id: Int64) throws {
+        let dependencies: [(String, String)] = [
+            ("rooms", "SELECT COUNT(1) FROM rooms WHERE project_id=?"),
+            ("business_documents", "SELECT COUNT(1) FROM business_documents WHERE project_id=?"),
+            ("estimates", "SELECT COUNT(1) FROM estimates WHERE project_id=?"),
+            ("project_status_history", "SELECT COUNT(1) FROM project_status_history WHERE project_id=?"),
+            ("project_lifecycle_history", "SELECT COUNT(1) FROM project_lifecycle_history WHERE project_id=?"),
+            ("project_tags", "SELECT COUNT(1) FROM project_tags WHERE project_id=?"),
+            ("project_notes", "SELECT COUNT(1) FROM project_notes WHERE project_id=?"),
+            ("calculation_snapshots", "SELECT COUNT(1) FROM calculation_snapshots WHERE project_id=?"),
+            ("purchase_lists", "SELECT COUNT(1) FROM purchase_lists WHERE project_id=?")
+        ]
+        var blockers: [String] = []
+        for (label, query) in dependencies {
+            let count = try scalarCount(query, bindValue: id)
+            if count > 0 {
+                blockers.append("\(label):\(count)")
+            }
+        }
+        guard blockers.isEmpty else {
+            throw RepositoryDomainError.deleteBlocked(entity: "проекта", reason: "есть зависимые записи (\(blockers.joined(separator: ", ")))")
+        }
+        try db.withStatement("DELETE FROM projects WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+    }
 
     func rooms(projectId: Int64? = nil) throws -> [Room] {
         let sql = projectId == nil ? "SELECT id,project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id FROM rooms ORDER BY id DESC" : "SELECT id,project_id,name,area,height,room_type,length,width,ceiling_area,wall_area_auto,wall_area_manual_adjustment,surface_condition,notes,photo_path,room_template_id FROM rooms WHERE project_id=? ORDER BY id DESC"
@@ -292,10 +382,86 @@ final class AppRepository {
         }
         return db.lastInsertedRowID()
     }
+    func createRoomWithAutoSurfaces(_ room: Room) throws -> Int64 {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        let roomId = try insertRoom(room)
+        try syncAutoSurfacesInternal(room: Room(id: roomId, projectId: room.projectId, name: room.name, area: room.area, height: room.height, roomType: room.roomType, length: room.length, width: room.width, ceilingArea: room.ceilingArea, wallAreaAuto: room.wallAreaAuto, wallAreaManualAdjustment: room.wallAreaManualAdjustment, surfaceCondition: room.surfaceCondition, notes: room.notes, photoPath: room.photoPath, roomTemplateId: room.roomTemplateId))
+        try db.execute("COMMIT;")
+        committed = true
+        return roomId
+    }
+    func updateRoom(_ room: Room) throws {
+        try db.withStatement("UPDATE rooms SET name=?,area=?,height=?,room_type=?,length=?,width=?,ceiling_area=?,wall_area_auto=?,wall_area_manual_adjustment=?,surface_condition=?,notes=?,photo_path=?,room_template_id=? WHERE id=?") { s in
+            bind(s,1,room.name); sqlite3_bind_double(s,2,room.area); sqlite3_bind_double(s,3,room.height); bind(s,4,room.roomType); sqlite3_bind_double(s,5,room.length); sqlite3_bind_double(s,6,room.width); sqlite3_bind_double(s,7,room.ceilingArea); sqlite3_bind_double(s,8,room.wallAreaAuto); sqlite3_bind_double(s,9,room.wallAreaManualAdjustment); bind(s,10,room.surfaceCondition); bind(s,11,room.notes); bind(s,12,room.photoPath); if let id = room.roomTemplateId { sqlite3_bind_int64(s,13,id) } else { sqlite3_bind_null(s,13) }; sqlite3_bind_int64(s,14,room.id); try step(s)
+        }
+    }
+    func updateRoomWithAutoSurfaces(_ room: Room) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try updateRoom(room)
+        try syncAutoSurfacesInternal(room: room)
+        try db.execute("COMMIT;")
+        committed = true
+    }
+    func deleteRoom(id: Int64) throws {
+        let estimateLinesCount = try scalarCount("SELECT COUNT(1) FROM estimate_lines WHERE room_id=?", bindValue: id)
+        guard estimateLinesCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "помещения", reason: "есть строки сметы (\(estimateLinesCount))")
+        }
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try db.withStatement("DELETE FROM openings WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM surfaces WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM room_work_assignments WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM room_material_assignments WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM trim_elements WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM rooms WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.execute("COMMIT;")
+        committed = true
+    }
 
     func workItems() throws -> [WorkCatalogItem] { try fetch("SELECT id,name,unit,base_rate_hour,base_price,swedish_name,sort_order,category_id,subcategory_id,description,is_active,include_standard_offer,rot_eligible,applicability,base_purchase_price,hourly_price,slow_speed,medium_speed,fast_speed,complexity_coefficient,height_coefficient,condition_coefficient,urgency_coefficient,accessibility_coefficient,additional_labor_hours,additional_material_usage FROM work_catalog ORDER BY sort_order,id") { s in
         WorkCatalogItem(id: sqlite3_column_int64(s,0), name: text(s,1), unit: text(s,2), baseRatePerUnitHour: sqlite3_column_double(s,3), basePrice: sqlite3_column_double(s,4), swedishName: text(s,5), sortOrder: Int(sqlite3_column_int(s,6)), categoryId: nullableInt64(s,7), subcategoryId: nullableInt64(s,8), description: text(s,9), isActive: sqlite3_column_int(s,10) == 1, includeInStandardOffer: sqlite3_column_int(s,11) == 1, rotEligible: sqlite3_column_int(s,12) == 1, applicability: text(s,13), basePurchasePrice: sqlite3_column_double(s,14), hourlyPrice: sqlite3_column_double(s,15), slowSpeed: sqlite3_column_double(s,16), mediumSpeed: sqlite3_column_double(s,17), fastSpeed: sqlite3_column_double(s,18), complexityCoefficient: sqlite3_column_double(s,19), heightCoefficient: sqlite3_column_double(s,20), conditionCoefficient: sqlite3_column_double(s,21), urgencyCoefficient: sqlite3_column_double(s,22), accessibilityCoefficient: sqlite3_column_double(s,23), additionalLaborHours: sqlite3_column_double(s,24), additionalMaterialUsage: sqlite3_column_double(s,25))
     }}
+
+    func workCategoryExists(id: Int64) throws -> Bool {
+        try scalarCount("SELECT COUNT(1) FROM work_categories WHERE id=?", bindValue: id) > 0
+    }
+
+    func workSubcategoryExists(id: Int64, categoryId: Int64?) throws -> Bool {
+        if let categoryId {
+            return try scalarCount("SELECT COUNT(1) FROM work_subcategories WHERE id=? AND category_id=?", bindValues: [id, categoryId]) > 0
+        }
+        return try scalarCount("SELECT COUNT(1) FROM work_subcategories WHERE id=?", bindValue: id) > 0
+    }
     func insertWorkItem(_ item: WorkCatalogItem) throws -> Int64 {
         try db.withStatement("INSERT INTO work_catalog (name,unit,base_rate_hour,base_price,swedish_name,sort_order,category_id,subcategory_id,description,is_active,include_standard_offer,rot_eligible,applicability,base_purchase_price,hourly_price,slow_speed,medium_speed,fast_speed,complexity_coefficient,height_coefficient,condition_coefficient,urgency_coefficient,accessibility_coefficient,additional_labor_hours,additional_material_usage) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)") { s in
             bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.baseRatePerUnitHour); sqlite3_bind_double(s,4,item.basePrice); bind(s,5,item.swedishName); sqlite3_bind_int(s,6,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,7,id) } else { sqlite3_bind_null(s,7) }; if let id = item.subcategoryId { sqlite3_bind_int64(s,8,id) } else { sqlite3_bind_null(s,8) }; bind(s,9,item.description); sqlite3_bind_int(s,10,item.isActive ? 1 : 0); sqlite3_bind_int(s,11,item.includeInStandardOffer ? 1 : 0); sqlite3_bind_int(s,12,item.rotEligible ? 1 : 0); bind(s,13,item.applicability); sqlite3_bind_double(s,14,item.basePurchasePrice); sqlite3_bind_double(s,15,item.hourlyPrice); sqlite3_bind_double(s,16,item.slowSpeed); sqlite3_bind_double(s,17,item.mediumSpeed); sqlite3_bind_double(s,18,item.fastSpeed); sqlite3_bind_double(s,19,item.complexityCoefficient); sqlite3_bind_double(s,20,item.heightCoefficient); sqlite3_bind_double(s,21,item.conditionCoefficient); sqlite3_bind_double(s,22,item.urgencyCoefficient); sqlite3_bind_double(s,23,item.accessibilityCoefficient); sqlite3_bind_double(s,24,item.additionalLaborHours); sqlite3_bind_double(s,25,item.additionalMaterialUsage); try step(s)
@@ -307,10 +473,39 @@ final class AppRepository {
             bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.baseRatePerUnitHour); sqlite3_bind_double(s,4,item.basePrice); bind(s,5,item.swedishName); sqlite3_bind_int(s,6,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,7,id) } else { sqlite3_bind_null(s,7) }; if let id = item.subcategoryId { sqlite3_bind_int64(s,8,id) } else { sqlite3_bind_null(s,8) }; bind(s,9,item.description); sqlite3_bind_int(s,10,item.isActive ? 1 : 0); sqlite3_bind_int(s,11,item.includeInStandardOffer ? 1 : 0); sqlite3_bind_int(s,12,item.rotEligible ? 1 : 0); bind(s,13,item.applicability); sqlite3_bind_double(s,14,item.basePurchasePrice); sqlite3_bind_double(s,15,item.hourlyPrice); sqlite3_bind_double(s,16,item.slowSpeed); sqlite3_bind_double(s,17,item.mediumSpeed); sqlite3_bind_double(s,18,item.fastSpeed); sqlite3_bind_double(s,19,item.complexityCoefficient); sqlite3_bind_double(s,20,item.heightCoefficient); sqlite3_bind_double(s,21,item.conditionCoefficient); sqlite3_bind_double(s,22,item.urgencyCoefficient); sqlite3_bind_double(s,23,item.accessibilityCoefficient); sqlite3_bind_double(s,24,item.additionalLaborHours); sqlite3_bind_double(s,25,item.additionalMaterialUsage); sqlite3_bind_int64(s,26,item.id); try step(s)
         }
     }
+    func deleteWorkItem(id: Int64) throws {
+        let estimateLinesCount = try scalarCount("SELECT COUNT(1) FROM estimate_lines WHERE work_item_id=?", bindValue: id)
+        guard estimateLinesCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "работы", reason: "она используется в строках сметы (\(estimateLinesCount))")
+        }
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try db.withStatement("DELETE FROM work_catalog WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM room_work_assignments WHERE work_item_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.execute("COMMIT;")
+        committed = true
+    }
 
     func materialItems() throws -> [MaterialCatalogItem] { try fetch("SELECT id,name,unit,base_price,swedish_name,sort_order,category_id,purchase_price,markup_percent,supplier_id,sku,usage_per_work_unit,package_size,stock,comment,is_active FROM material_catalog ORDER BY sort_order,id") { s in
         MaterialCatalogItem(id: sqlite3_column_int64(s,0), name: text(s,1), unit: text(s,2), basePrice: sqlite3_column_double(s,3), swedishName: text(s,4), sortOrder: Int(sqlite3_column_int(s,5)), categoryId: nullableInt64(s,6), purchasePrice: sqlite3_column_double(s,7), markupPercent: sqlite3_column_double(s,8), supplierId: nullableInt64(s,9), sku: text(s,10), usagePerWorkUnit: sqlite3_column_double(s,11), packageSize: sqlite3_column_double(s,12), stock: sqlite3_column_double(s,13), comment: text(s,14), isActive: sqlite3_column_int(s,15) == 1)
     }}
+
+    func materialCategoryExists(id: Int64) throws -> Bool {
+        try scalarCount("SELECT COUNT(1) FROM material_categories WHERE id=?", bindValue: id) > 0
+    }
+
+    func supplierExists(id: Int64) throws -> Bool {
+        try scalarCount("SELECT COUNT(1) FROM suppliers WHERE id=?", bindValue: id) > 0
+    }
     func insertMaterialItem(_ item: MaterialCatalogItem) throws -> Int64 {
         try db.withStatement("INSERT INTO material_catalog (name,unit,base_price,swedish_name,sort_order,category_id,purchase_price,markup_percent,supplier_id,sku,usage_per_work_unit,package_size,stock,comment,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)") { s in
             bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.basePrice); bind(s,4,item.swedishName); sqlite3_bind_int(s,5,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,6,id) } else { sqlite3_bind_null(s,6) }; sqlite3_bind_double(s,7,item.purchasePrice); sqlite3_bind_double(s,8,item.markupPercent); if let id = item.supplierId { sqlite3_bind_int64(s,9,id) } else { sqlite3_bind_null(s,9) }; bind(s,10,item.sku); sqlite3_bind_double(s,11,item.usagePerWorkUnit); sqlite3_bind_double(s,12,item.packageSize); sqlite3_bind_double(s,13,item.stock); bind(s,14,item.comment); sqlite3_bind_int(s,15,item.isActive ? 1 : 0); try step(s)
@@ -322,10 +517,35 @@ final class AppRepository {
             bind(s,1,item.name); bind(s,2,item.unit); sqlite3_bind_double(s,3,item.basePrice); bind(s,4,item.swedishName); sqlite3_bind_int(s,5,Int32(item.sortOrder)); if let id = item.categoryId { sqlite3_bind_int64(s,6,id) } else { sqlite3_bind_null(s,6) }; sqlite3_bind_double(s,7,item.purchasePrice); sqlite3_bind_double(s,8,item.markupPercent); if let id = item.supplierId { sqlite3_bind_int64(s,9,id) } else { sqlite3_bind_null(s,9) }; bind(s,10,item.sku); sqlite3_bind_double(s,11,item.usagePerWorkUnit); sqlite3_bind_double(s,12,item.packageSize); sqlite3_bind_double(s,13,item.stock); bind(s,14,item.comment); sqlite3_bind_int(s,15,item.isActive ? 1 : 0); sqlite3_bind_int64(s,16,item.id); try step(s)
         }
     }
+    func deleteMaterialItem(id: Int64) throws {
+        let estimateLinesCount = try scalarCount("SELECT COUNT(1) FROM estimate_lines WHERE material_item_id=?", bindValue: id)
+        guard estimateLinesCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "материала", reason: "он используется в строках сметы (\(estimateLinesCount))")
+        }
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try db.withStatement("DELETE FROM material_catalog WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM room_material_assignments WHERE material_item_id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+        try db.execute("COMMIT;")
+        committed = true
+    }
 
     func templates() throws -> [DocumentTemplate] { try fetch("SELECT id,name,language,header_text,footer_text,sort_order FROM document_templates ORDER BY sort_order,id") { s in
         DocumentTemplate(id: sqlite3_column_int64(s,0), name: text(s,1), language: text(s,2), headerText: text(s,3), footerText: text(s,4), sortOrder: Int(sqlite3_column_int(s,5)))
     }}
+
+    func roomTemplateExists(id: Int64) throws -> Bool {
+        try scalarCount("SELECT COUNT(1) FROM room_templates WHERE id=?", bindValue: id) > 0
+    }
     func insertTemplate(_ t: DocumentTemplate) throws -> Int64 {
         try db.withStatement("INSERT INTO document_templates (name,language,header_text,footer_text,sort_order) VALUES (?,?,?,?,?)") { s in
             bind(s,1,t.name); bind(s,2,t.language); bind(s,3,t.headerText); bind(s,4,t.footerText); sqlite3_bind_int(s,5,Int32(t.sortOrder)); try step(s)
@@ -335,6 +555,17 @@ final class AppRepository {
     func updateTemplate(_ t: DocumentTemplate) throws {
         try db.withStatement("UPDATE document_templates SET name=?,language=?,header_text=?,footer_text=?,sort_order=? WHERE id=?") { s in
             bind(s,1,t.name); bind(s,2,t.language); bind(s,3,t.headerText); bind(s,4,t.footerText); sqlite3_bind_int(s,5,Int32(t.sortOrder)); sqlite3_bind_int64(s,6,t.id); try step(s)
+        }
+    }
+    func deleteTemplate(id: Int64) throws {
+        let generatedDocumentsCount = try scalarCount("SELECT COUNT(1) FROM generated_documents WHERE template_id=?", bindValue: id)
+        let snapshotsCount = try scalarCount("SELECT COUNT(1) FROM document_snapshots WHERE template_id=?", bindValue: id)
+        guard generatedDocumentsCount == 0, snapshotsCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "шаблона", reason: "он используется в документах (\(generatedDocumentsCount)) или снапшотах (\(snapshotsCount))")
+        }
+        try db.withStatement("DELETE FROM document_templates WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
         }
     }
 
@@ -451,6 +682,124 @@ final class AppRepository {
             sqlite3_bind_int64(s,1,opening.roomId); if let sid = opening.surfaceId { sqlite3_bind_int64(s,2,sid) } else { sqlite3_bind_null(s,2) }; bind(s,3,opening.type); bind(s,4,opening.name); sqlite3_bind_double(s,5,opening.width); sqlite3_bind_double(s,6,opening.height); sqlite3_bind_int(s,7,Int32(opening.count)); sqlite3_bind_int(s,8,opening.subtractFromWallArea ? 1 : 0); try step(s)
         }
     }
+    func deleteOpening(id: Int64) throws {
+        try db.withStatement("DELETE FROM openings WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+    }
+    func deleteSpeedProfile(id: Int64) throws {
+        let projectUsageCount = try scalarCount("SELECT COUNT(1) FROM projects WHERE speed_profile_id=?", bindValue: id)
+        let estimateUsageCount = try scalarCount("SELECT COUNT(1) FROM estimates WHERE speed_profile_id=?", bindValue: id)
+        guard projectUsageCount == 0, estimateUsageCount == 0 else {
+            throw RepositoryDomainError.deleteBlocked(entity: "профиля скорости", reason: "используется в проектах (\(projectUsageCount))/сметах (\(estimateUsageCount))")
+        }
+        try db.withStatement("DELETE FROM speed_profiles WHERE id=?") { s in
+            sqlite3_bind_int64(s, 1, id)
+            try step(s)
+        }
+    }
+    func syncAutoSurfaces(room: Room) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try syncAutoSurfacesInternal(room: room)
+        try db.execute("COMMIT;")
+        committed = true
+    }
+    private func syncAutoSurfacesInternal(room: Room) throws {
+        let perimeter = room.length > 0 && room.width > 0 ? 2 * (room.length + room.width) : 0
+        try db.withStatement("""
+            UPDATE openings
+            SET surface_id=NULL
+            WHERE room_id=? AND surface_id IN (
+                SELECT id FROM surfaces WHERE room_id=? AND is_custom=0 AND source='auto'
+            )
+            """) { s in
+            sqlite3_bind_int64(s, 1, room.id)
+            sqlite3_bind_int64(s, 2, room.id)
+            try step(s)
+        }
+        try db.withStatement("DELETE FROM surfaces WHERE room_id=? AND is_custom=0 AND source='auto'") { s in
+            sqlite3_bind_int64(s, 1, room.id)
+            try step(s)
+        }
+        let autos = [
+            Surface(id: 0, roomId: room.id, type: "wall", name: "Стены", area: room.wallAreaAuto, perimeter: perimeter, isCustom: false, source: "auto", manualAdjustment: room.wallAreaManualAdjustment),
+            Surface(id: 0, roomId: room.id, type: "ceiling", name: "Потолок", area: room.ceilingArea, perimeter: 0, isCustom: false, source: "auto", manualAdjustment: 0),
+            Surface(id: 0, roomId: room.id, type: "floor", name: "Пол", area: room.area, perimeter: 0, isCustom: false, source: "auto", manualAdjustment: 0),
+            Surface(id: 0, roomId: room.id, type: "plinth", name: "Плинтус", area: 0, perimeter: perimeter, isCustom: false, source: "auto", manualAdjustment: 0)
+        ]
+        for surface in autos {
+            try db.withStatement("INSERT INTO surfaces (room_id,type,name,area,perimeter,is_custom,source,manual_adjustment) VALUES (?,?,?,?,?,?,?,?)") { s in
+                sqlite3_bind_int64(s,1,room.id); bind(s,2,surface.type); bind(s,3,surface.name); sqlite3_bind_double(s,4,surface.area); sqlite3_bind_double(s,5,surface.perimeter); sqlite3_bind_int(s,6,0); bind(s,7,surface.source); sqlite3_bind_double(s,8,surface.manualAdjustment); try step(s)
+            }
+        }
+    }
+    func roomWorkAssignments() throws -> [Int64: [Int64]] {
+        var result: [Int64: [Int64]] = [:]
+        try db.withStatement("SELECT room_id, work_item_id FROM room_work_assignments ORDER BY room_id, work_item_id") { s in
+            while sqlite3_step(s) == SQLITE_ROW {
+                let roomId = sqlite3_column_int64(s, 0)
+                let workId = sqlite3_column_int64(s, 1)
+                result[roomId, default: []].append(workId)
+            }
+        }
+        return result
+    }
+    func roomMaterialAssignments() throws -> [Int64: [Int64]] {
+        var result: [Int64: [Int64]] = [:]
+        try db.withStatement("SELECT room_id, material_item_id FROM room_material_assignments ORDER BY room_id, material_item_id") { s in
+            while sqlite3_step(s) == SQLITE_ROW {
+                let roomId = sqlite3_column_int64(s, 0)
+                let materialId = sqlite3_column_int64(s, 1)
+                result[roomId, default: []].append(materialId)
+            }
+        }
+        return result
+    }
+    func replaceRoomWorkAssignments(roomId: Int64, workIds: [Int64]) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try db.withStatement("DELETE FROM room_work_assignments WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, roomId)
+            try step(s)
+        }
+        for workId in Set(workIds) {
+            try db.withStatement("INSERT INTO room_work_assignments (room_id, work_item_id) VALUES (?,?)") { s in
+                sqlite3_bind_int64(s, 1, roomId)
+                sqlite3_bind_int64(s, 2, workId)
+                try step(s)
+            }
+        }
+        try db.execute("COMMIT;")
+        committed = true
+    }
+    func replaceRoomMaterialAssignments(roomId: Int64, materialIds: [Int64]) throws {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed { try? db.execute("ROLLBACK;") }
+        }
+        try db.withStatement("DELETE FROM room_material_assignments WHERE room_id=?") { s in
+            sqlite3_bind_int64(s, 1, roomId)
+            try step(s)
+        }
+        for materialId in Set(materialIds) {
+            try db.withStatement("INSERT INTO room_material_assignments (room_id, material_item_id) VALUES (?,?)") { s in
+                sqlite3_bind_int64(s, 1, roomId)
+                sqlite3_bind_int64(s, 2, materialId)
+                try step(s)
+            }
+        }
+        try db.execute("COMMIT;")
+        committed = true
+    }
     private func fetch<T>(_ sql: String, _ map: (OpaquePointer) -> T) throws -> [T] {
         var items: [T] = []
         try db.withStatement(sql) { s in
@@ -466,6 +815,27 @@ final class AppRepository {
             while sqlite3_step(s) == SQLITE_ROW { items.append(map(s)) }
         }
         return items
+    }
+    private func scalarCount(_ sql: String, bindValue: Int64) throws -> Int {
+        try db.withStatement(sql) { s in
+            sqlite3_bind_int64(s, 1, bindValue)
+            guard sqlite3_step(s) == SQLITE_ROW else {
+                throw DatabaseError.executeFailed("Не удалось получить count")
+            }
+        return Int(sqlite3_column_int64(s, 0))
+        }
+    }
+
+    private func scalarCount(_ sql: String, bindValues: [Int64]) throws -> Int {
+        try db.withStatement(sql) { s in
+            for (index, value) in bindValues.enumerated() {
+                sqlite3_bind_int64(s, Int32(index + 1), value)
+            }
+            guard sqlite3_step(s) == SQLITE_ROW else {
+                throw DatabaseError.executeFailed("Не удалось получить count")
+            }
+            return Int(sqlite3_column_int64(s, 0))
+        }
     }
 
     private func bind(_ stmt: OpaquePointer, _ index: Int32, _ value: String) { sqlite3_bind_text(stmt, index, value, -1, SQLITE_TRANSIENT) }

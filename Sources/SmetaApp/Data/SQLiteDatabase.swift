@@ -680,6 +680,29 @@ final class SQLiteDatabase {
         """)
     }
 
+    private func applyRoomAssignmentsPersistenceMigration() throws {
+        try execute("""
+        CREATE TABLE IF NOT EXISTS room_work_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            work_item_id INTEGER NOT NULL,
+            UNIQUE(room_id, work_item_id),
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+            FOREIGN KEY(work_item_id) REFERENCES work_catalog(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS room_material_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            material_item_id INTEGER NOT NULL,
+            UNIQUE(room_id, material_item_id),
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+            FOREIGN KEY(material_item_id) REFERENCES material_catalog(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_room_work_assignments_room ON room_work_assignments(room_id);
+        CREATE INDEX IF NOT EXISTS idx_room_material_assignments_room ON room_material_assignments(room_id);
+        """)
+    }
+
     private func dropLegacyDocumentSeriesTypeConstraintIfNeeded() throws {
         guard try tableExists("document_series") else { return }
 
@@ -818,6 +841,9 @@ final class SQLiteDatabase {
         },
         MigrationStep(version: 4, id: "004_document_series_activation") { database in
             try database.applyDocumentSeriesActivationMigration()
+        },
+        MigrationStep(version: 5, id: "005_room_assignments_persistence") { database in
+            try database.applyRoomAssignmentsPersistenceMigration()
         }
     ]
 
