@@ -120,14 +120,52 @@ struct RemindersView: View {
 
 struct DocumentTemplatesView: View {
     @EnvironmentObject private var vm: AppViewModel
+    @State private var name = ""
+    @State private var language = "sv"
+    @State private var header = ""
+    @State private var footer = ""
+    @State private var createTemplateError: String?
+    @State private var editingTemplate: DocumentTemplate?
     var body: some View {
         VStack(alignment: .leading) {
             Text("Document templates").font(.largeTitle).bold()
-            List(vm.templates) { t in
-                VStack(alignment: .leading) {
-                    Text(t.name).bold()
-                    Text(t.headerText)
+            HStack {
+                TextField("Name", text: $name)
+                TextField("Lang", text: $language)
+                TextField("Header", text: $header)
+                TextField("Footer", text: $footer)
+                Button("Create") {
+                    guard vm.addTemplate(DocumentTemplate(id: 0, name: name, language: language, headerText: header, footerText: footer, sortOrder: vm.templates.count)) else {
+                        createTemplateError = vm.errorMessage ?? "Не удалось создать шаблон"
+                        return
+                    }
+                    name = ""
+                    language = "sv"
+                    header = ""
+                    footer = ""
+                    createTemplateError = nil
                 }
+            }
+            if let createTemplateError {
+                Text(createTemplateError).foregroundStyle(.red).font(.caption)
+            }
+            List(vm.templates) { t in
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(t.name).bold()
+                        Text(t.headerText)
+                    }
+                    Spacer()
+                    Button("Edit") { editingTemplate = t }
+                    Button("Delete", role: .destructive) {
+                        vm.deleteTemplate(t)
+                    }
+                }
+            }
+        }
+        .sheet(item: $editingTemplate) { template in
+            TemplateEditSheet(template: template) { updated in
+                vm.updateTemplate(updated) ? nil : (vm.errorMessage ?? "Не удалось обновить шаблон")
             }
         }
     }
@@ -154,6 +192,44 @@ struct TaxSettingsView: View {
                 Text("\(profile.name) VAT \(profile.vatRate * 100, specifier: "%.0f")% ROT \(profile.rotPercent * 100, specifier: "%.0f")%")
             }
         }
+    }
+}
+
+private struct TemplateEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: DocumentTemplate
+    @State private var validationMessage: String?
+    let onSave: (DocumentTemplate) -> String?
+
+    init(template: DocumentTemplate, onSave: @escaping (DocumentTemplate) -> String?) {
+        _draft = State(initialValue: template)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Edit template").font(.headline)
+            TextField("Name", text: $draft.name)
+            TextField("Lang", text: $draft.language)
+            TextField("Header", text: $draft.headerText)
+            TextField("Footer", text: $draft.footerText)
+            TextField("Sort", value: $draft.sortOrder, format: .number)
+            HStack {
+                Button("Cancel") { dismiss() }
+                Button("Save") {
+                    if let saveError = onSave(draft) {
+                        validationMessage = saveError
+                        return
+                    }
+                    dismiss()
+                }
+            }
+            if let validationMessage {
+                Text(validationMessage).foregroundStyle(.red).font(.caption)
+            }
+        }
+        .padding()
+        .frame(minWidth: 420)
     }
 }
 #endif

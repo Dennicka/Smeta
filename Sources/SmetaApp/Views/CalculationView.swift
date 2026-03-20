@@ -54,7 +54,11 @@ struct CalculationView: View {
             VStack(alignment: .leading) {
                 Text(room.name).bold()
                 worksChooser(roomId: room.id)
+                Text("Назначено работ: \(vm.selectedWorksByRoom[room.id, default: []].map(\.name).joined(separator: ", "))")
+                    .font(.caption)
                 materialsChooser(roomId: room.id)
+                Text("Назначено материалов: \(vm.selectedMaterialsByRoom[room.id, default: []].map(\.name).joined(separator: ", "))")
+                    .font(.caption)
             }
         }
     }
@@ -62,10 +66,12 @@ struct CalculationView: View {
     private func worksChooser(roomId: Int64) -> some View {
         ScrollView(.horizontal) {
             HStack {
-                ForEach(vm.works) { work in
+                ForEach(vm.works.filter(\.isActive)) { work in
                     Button(work.name) {
-                        vm.selectedWorksByRoom[roomId, default: []].append(work)
+                        vm.toggleWorkSelection(roomId: roomId, work: work)
                     }
+                    .buttonStyle(.bordered)
+                    .tint(vm.selectedWorksByRoom[roomId, default: []].contains(where: { $0.id == work.id }) ? .green : .accentColor)
                 }
             }
         }
@@ -74,10 +80,12 @@ struct CalculationView: View {
     private func materialsChooser(roomId: Int64) -> some View {
         ScrollView(.horizontal) {
             HStack {
-                ForEach(vm.materials) { material in
+                ForEach(vm.materials.filter(\.isActive)) { material in
                     Button(material.name) {
-                        vm.selectedMaterialsByRoom[roomId, default: []].append(material)
+                        vm.toggleMaterialSelection(roomId: roomId, material: material)
                     }
+                    .buttonStyle(.bordered)
+                    .tint(vm.selectedMaterialsByRoom[roomId, default: []].contains(where: { $0.id == material.id }) ? .green : .accentColor)
                 }
             }
         }

@@ -6,6 +6,11 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+if [[ "${SMETA_ENABLE_RUNTIME_UI_SMOKE:-0}" != "1" ]]; then
+  echo "ERROR: set SMETA_ENABLE_RUNTIME_UI_SMOKE=1 to run runtime UI smoke checks."
+  exit 1
+fi
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
