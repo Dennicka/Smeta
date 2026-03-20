@@ -1,6 +1,6 @@
 # D-013b Full Schema Parity Evidence Pack
 
-Date (UTC): 2026-03-18
+Date (UTC): 2026-03-20
 
 ## 1) Exact commands
 
@@ -37,8 +37,8 @@ Date (UTC): 2026-03-18
 
 ### Command 4 output
 ```text
-[INFO] Scenario A schema version: 3
-[INFO] Scenario B schema version: 3
+[INFO] Scenario A schema version: 5
+[INFO] Scenario B schema version: 5
 [INFO] Scenario B legacy project name: Legacy Project
 [INFO] Scenario B workflow_status after migration: draft
 | object name | type | expected | actual in Scenario A | actual in Scenario B |
@@ -95,11 +95,12 @@ Date (UTC): 2026-03-18
 | project_notes | table | yes | yes | yes |
 | export_logs | table | yes | yes | yes |
 | idx_business_documents_number_unique | index | yes | yes | yes |
-| idx_document_series_type_unique | index | yes | yes | yes |
+| idx_document_series_type_lookup | index | yes | yes | yes |
+| idx_document_series_active_unique | index | yes | yes | yes |
 | idx_payment_allocations_document | index | yes | yes | yes |
 | idx_projects_updated_lookup | index | yes | yes | yes |
-[INFO] Scenario A migration rows: 3
-[INFO] Scenario B migration rows: 3
+[INFO] Scenario A migration rows: 5
+[INFO] Scenario B migration rows: 5
 [INFO] Scenario B legacy data preserved: yes
 [VERDICT] fresh schema parity = PASS
 [VERDICT] legacy upgrade parity = PASS
@@ -108,19 +109,19 @@ RESULT: PASS
 
 ### Command 5 output
 ```text
-[PASS] Scenario A: schema version is 3
+[PASS] Scenario A: schema version is 5
 [PASS] Scenario A: projects.workflow_status exists
-[INFO] Scenario A migration history: 1:001_base_schema, 2:002_legacy_upgrade_bridge, 3:003_stage5_ops_tail_tables
+[INFO] Scenario A migration history: 1:001_base_schema, 2:002_legacy_upgrade_bridge, 3:003_stage5_ops_tail_tables, 4:004_document_series_activation, 5:005_room_assignments_persistence
 [PASS] Scenario A: ordered migration ids recorded
 [PASS] Scenario A: smoke read/write PASS
 [PASS] Scenario B: legacy fixture starts without projects.workflow_status
-[PASS] Scenario B: migrated schema version is 3
+[PASS] Scenario B: migrated schema version is 5
 [PASS] Scenario B: legacy project data preserved
 [PASS] Scenario B: new required workflow_status default populated
 [PASS] Scenario B: new required pricing_mode default populated
 [PASS] Scenario C: second runner pass keeps migration history unchanged
 [PASS] Scenario C: no duplicate migration rows
-[INFO] Scenario B migration history: 1:001_base_schema, 2:002_legacy_upgrade_bridge, 3:003_stage5_ops_tail_tables
+[INFO] Scenario B migration history: 1:001_base_schema, 2:002_legacy_upgrade_bridge, 3:003_stage5_ops_tail_tables, 4:004_document_series_activation, 5:005_room_assignments_persistence
 RESULT: PASS
 ```
 
