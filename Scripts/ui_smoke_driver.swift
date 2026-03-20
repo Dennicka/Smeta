@@ -130,11 +130,94 @@ func findButtonWithPrefix(root: AXUIElement, prefix: String, excluding: String) 
     }.first
 }
 
-func press(_ element: AXUIElement) throws {
-    let status = AXUIElementPerformAction(element, kAXPressAction as CFString)
-    guard status == .success else {
-        throw UISmokeError.actionFailed("AXPress failed with status \(status.rawValue)")
+func parent(of element: AXUIElement) -> AXUIElement? {
+    copyAttribute(element, name: kAXParentAttribute as String) as? AXUIElement
+}
+
+func actions(of element: AXUIElement) -> [String] {
+    var names: CFArray?
+    let status = AXUIElementCopyActionNames(element, &names)
+    guard status == .success else { return [] }
+    return names as? [String] ?? []
+}
+
+func label(of element: AXUIElement) -> String? {
+    if let title = copyAttribute(element, name: kAXTitleAttribute as String) as? String, !title.isEmpty {
+        return title
     }
+    if let description = copyAttribute(element, name: kAXDescriptionAttribute as String) as? String, !description.isEmpty {
+        return description
+    }
+    return nil
+}
+
+func elementSummary(_ element: AXUIElement) -> String {
+    let id = identifier(of: element) ?? "<none>"
+    let elementRole = role(of: element) ?? "<unknown>"
+    let elementLabel = label(of: element) ?? "<none>"
+    let supportedActions = actions(of: element)
+    return "id=\(id) role=\(elementRole) label=\(elementLabel) actions=\(supportedActions)"
+}
+
+func firstPressableDescendant(from element: AXUIElement) -> AXUIElement? {
+    var queue: [AXUIElement] = children(of: element)
+    while !queue.isEmpty {
+        let current = queue.removeFirst()
+        if actions(of: current).contains(kAXPressAction as String) {
+            return current
+        }
+        queue.append(contentsOf: children(of: current))
+    }
+    return nil
+}
+
+func firstPressableAncestor(from element: AXUIElement, maxDepth: Int = 4) -> AXUIElement? {
+    var depth = 0
+    var current = parent(of: element)
+    while let candidate = current, depth < maxDepth {
+        if actions(of: candidate).contains(kAXPressAction as String) {
+            return candidate
+        }
+        current = parent(of: candidate)
+        depth += 1
+    }
+    return nil
+}
+
+func resolvePressTarget(from element: AXUIElement) -> AXUIElement? {
+    if actions(of: element).contains(kAXPressAction as String) {
+        return element
+    }
+    if let descendant = firstPressableDescendant(from: element) {
+        return descendant
+    }
+    if let ancestor = firstPressableAncestor(from: element) {
+        return ancestor
+    }
+    return nil
+}
+
+func press(_ element: AXUIElement, step: String) throws {
+    guard let target = waitForResolvedTarget(timeout: 2.0, element: element) else {
+        throw UISmokeError.actionFailed(
+            "AXPress target unresolved at step=\(step) element={\(elementSummary(element))}"
+        )
+    }
+    let status = AXUIElementPerformAction(target, kAXPressAction as CFString)
+    guard status == .success else {
+        throw UISmokeError.actionFailed(
+            "AXPress failed with status \(status.rawValue) at step=\(step) target={\(elementSummary(target))} original={\(elementSummary(element))}"
+        )
+    }
+}
+
+func waitForResolvedTarget(timeout: TimeInterval, element: AXUIElement) -> AXUIElement? {
+    var resolved: AXUIElement?
+    let found = waitUntil(timeout: timeout, poll: 0.15) {
+        resolved = resolvePressTarget(from: element)
+        return resolved != nil
+    }
+    return found ? resolved : nil
 }
 
 func waitUntil(timeout: TimeInterval, poll: TimeInterval = 0.2, condition: () -> Bool) -> Bool {
@@ -185,7 +268,7 @@ func runOperational() throws {
     guard let navProjects = waitForElement(appElement: appElement, identifier: "smoke.nav.projects", timeout: 8) else {
         throw UISmokeError.elementNotFound("smoke.nav.projects")
     }
-    try press(navProjects)
+    try press(navProjects, step: "open-projects-tab")
     guard waitUntil(timeout: 8, condition: {
         guard let activeWindow = currentWindow(of: appElement) else { return false }
         return findElements(root: activeWindow) { element in
@@ -202,7 +285,7 @@ func runOperational() throws {
           let selectOther = findButtonWithPrefix(root: projectsWindow, prefix: selectPrefix, excluding: selectedBefore) else {
         throw UISmokeError.elementNotFound("project-select button for alternate project")
     }
-    try press(selectOther)
+    try press(selectOther, step: "select-alternate-project")
 
     let selectionChanged = waitUntil(timeout: 5) {
         guard let afterRaw = textValue(root: window, identifier: "smoke.selectedProject"),
@@ -218,7 +301,7 @@ func runOperational() throws {
     guard let navCalculation = waitForElement(appElement: appElement, identifier: "smoke.nav.calculation", timeout: 8) else {
         throw UISmokeError.elementNotFound("smoke.nav.calculation")
     }
-    try press(navCalculation)
+    try press(navCalculation, step: "open-calculation-tab")
     guard waitForElement(appElement: appElement, identifier: "smoke.calculate.run", timeout: 8) != nil else {
         throw UISmokeError.invalidState("Calculation screen did not expose calculate action in time")
     }
@@ -227,7 +310,7 @@ func runOperational() throws {
           let runCalculation = findElement(root: calculationWindow, identifier: "smoke.calculate.run") else {
         throw UISmokeError.elementNotFound("smoke.calculate.run")
     }
-    try press(runCalculation)
+    try press(runCalculation, step: "run-calculation")
 
     let hasRows = waitUntil(timeout: 6) {
         guard let rowsRaw = textValue(root: window, identifier: "smoke.calculationRows"),
