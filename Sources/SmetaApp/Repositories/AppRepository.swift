@@ -817,16 +817,19 @@ final class AppRepository {
         return items
     }
     private func scalarCount(_ sql: String, bindValue: Int64) throws -> Int {
+        var result = 0
         try db.withStatement(sql) { s in
             sqlite3_bind_int64(s, 1, bindValue)
             guard sqlite3_step(s) == SQLITE_ROW else {
                 throw DatabaseError.executeFailed("Не удалось получить count")
             }
-        return Int(sqlite3_column_int64(s, 0))
+            result = Int(sqlite3_column_int64(s, 0))
         }
+        return result
     }
 
     private func scalarCount(_ sql: String, bindValues: [Int64]) throws -> Int {
+        var result = 0
         try db.withStatement(sql) { s in
             for (index, value) in bindValues.enumerated() {
                 sqlite3_bind_int64(s, Int32(index + 1), value)
@@ -834,8 +837,9 @@ final class AppRepository {
             guard sqlite3_step(s) == SQLITE_ROW else {
                 throw DatabaseError.executeFailed("Не удалось получить count")
             }
-            return Int(sqlite3_column_int64(s, 0))
+            result = Int(sqlite3_column_int64(s, 0))
         }
+        return result
     }
 
     private func bind(_ stmt: OpaquePointer, _ index: Int32, _ value: String) { sqlite3_bind_text(stmt, index, value, -1, SQLITE_TRANSIENT) }
