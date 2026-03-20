@@ -24,9 +24,19 @@
 - Materials
 - Calculation
 - Documents
+- Offer editor
+- Contract editor
+- Invoice editor
+- Payments
+- Extra work / ÄTA
+- Reminders
+- Document templates
+- Document numbering
+- Tax settings
+- Stage 5 Operations
 - Settings
 
-Все экраны подключены в реальную навигацию `NavigationSplitView`.
+Текущий navigation shell в `RootView` реализован как двухколоночный `HStack`: слева кастомный sidebar со списком экранов, справа detail-область с верхним полем поиска и контентом выбранного экрана (через `switch selected`).
 
 ## Рабочий сценарий Stage 1
 Поддерживается сквозной поток:
