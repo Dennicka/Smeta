@@ -225,7 +225,7 @@ struct VerifySchemaParityD013B {
             print("[VERDICT] fresh schema parity = \(parityA ? "PASS" : "FAIL")")
             print("[VERDICT] legacy upgrade parity = \(parityB && dataPreserved ? "PASS" : "FAIL")")
 
-            if !parityA || !parityB || !dataPreserved || versionA != 3 || versionB != 3 || migrationRowsA != 3 || migrationRowsB != 3 {
+            if !parityA || !parityB || !dataPreserved || versionA != 5 || versionB != 5 || migrationRowsA != 5 || migrationRowsB != 5 {
                 failed = true
             }
         } catch {

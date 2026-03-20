@@ -129,12 +129,12 @@ struct VerifyMigrationFlowD013 {
             let dbAFresh = try SQLiteDatabase(filename: dbFileA)
             try dbAFresh.initializeSchema()
             let versionA = try dbAFresh.currentSchemaVersion()
-            failed = !assertCheck(versionA == 3, "Scenario A: schema version is 3") || failed
+            failed = !assertCheck(versionA == 5, "Scenario A: schema version is 5") || failed
             let hasWorkflow = try columnExists(dbAFresh, table: "projects", column: "workflow_status")
             failed = !assertCheck(hasWorkflow, "Scenario A: projects.workflow_status exists") || failed
             let historyA = try dbAFresh.migrationHistory()
             print("[INFO] Scenario A migration history: \(historyA.map { "\($0.version):\($0.id)" }.joined(separator: ", "))")
-            failed = !assertCheck(historyA.map(\.id) == ["001_base_schema", "002_legacy_upgrade_bridge", "003_stage5_ops_tail_tables"], "Scenario A: ordered migration ids recorded") || failed
+            failed = !assertCheck(historyA.map(\.id) == ["001_base_schema", "002_legacy_upgrade_bridge", "003_stage5_ops_tail_tables", "004_document_series_activation", "005_room_assignments_persistence"], "Scenario A: ordered migration ids recorded") || failed
 
             // Simple smoke write/read on latest schema.
             try dbAFresh.execute("""
@@ -156,7 +156,7 @@ struct VerifyMigrationFlowD013 {
 
             try dbBLegacy.initializeSchema()
             let versionB = try dbBLegacy.currentSchemaVersion()
-            failed = !assertCheck(versionB == 3, "Scenario B: migrated schema version is 3") || failed
+            failed = !assertCheck(versionB == 5, "Scenario B: migrated schema version is 5") || failed
 
             let workflowStatus = try fetchText(dbBLegacy, "SELECT workflow_status FROM projects WHERE id=1;")
             let pricingMode = try fetchText(dbBLegacy, "SELECT pricing_mode FROM projects WHERE id=1;")
@@ -171,7 +171,7 @@ struct VerifyMigrationFlowD013 {
             let historyAfter = try dbBLegacy.migrationHistory()
             failed = !assertCheck(historyBefore == historyAfter, "Scenario C: second runner pass keeps migration history unchanged") || failed
             let migrationRows = try fetchInt(dbBLegacy, "SELECT COUNT(*) FROM schema_migrations;")
-            failed = !assertCheck(migrationRows == 3, "Scenario C: no duplicate migration rows") || failed
+            failed = !assertCheck(migrationRows == 5, "Scenario C: no duplicate migration rows") || failed
 
             print("[INFO] Scenario B migration history: \(historyAfter.map { "\($0.version):\($0.id)" }.joined(separator: ", "))")
         } catch {
