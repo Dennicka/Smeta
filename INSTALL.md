@@ -66,11 +66,24 @@ open release/Smeta.app
 
 ```bash
 cd /путь/к/Smeta
-./Scripts/macos_smoke_check.sh
+SMETA_ENABLE_RUNTIME_UI_SMOKE=1 ./Scripts/macos_smoke_check.sh
 ```
 
-Скрипт проверяет наличие `.app`, запускает приложение на короткое время и сохраняет runtime-лог:
-`release/smoke-logs/runtime.log`
+Важно:
+- Скрипт запускается только на macOS (`uname -s` должен быть `Darwin`).
+- Без `SMETA_ENABLE_RUNTIME_UI_SMOKE=1` скрипт завершится с ошибкой.
+- По умолчанию проверяется `release/Smeta.app` (можно передать путь к `.app` первым аргументом).
+- Для UI smoke automation может требоваться Accessibility permission для процесса Terminal/shell.
+- Если в выводе есть `BLOCKED` / `classification=accessibility_permission_required`, выдайте accessibility access для Terminal/shell и повторите запуск.
+
+Ожидаемый успешный результат:
+- В конце вывода есть строка `==> PASS: canonical runtime smoke requires operational interactivity`.
+
+Логи smoke-проверки сохраняются в:
+- `release/smoke-logs/runtime-operational.log`
+- `release/smoke-logs/runtime-controlled-failure.log`
+- `release/smoke-logs/runtime-negative.log`
+- `release/smoke-logs/runtime-driver.log`
 
 ---
 
@@ -90,8 +103,11 @@ cd /путь/к/Smeta
 
 - Лог сборки:  
   `release/build-logs/swift-build-release.log`
-- Лог smoke-запуска:  
-  `release/smoke-logs/runtime.log`
+- Логи smoke-запуска:  
+  `release/smoke-logs/runtime-operational.log`  
+  `release/smoke-logs/runtime-controlled-failure.log`  
+  `release/smoke-logs/runtime-negative.log`  
+  `release/smoke-logs/runtime-driver.log`
 
 Если приложение не открывается через Finder, запустите из Terminal:
 ```bash
