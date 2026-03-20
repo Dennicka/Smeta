@@ -1505,6 +1505,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func exportProjectBundle(projectId: Int64) {
+        #if canImport(AppKit)
         do {
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true
@@ -1543,6 +1544,9 @@ final class AppViewModel: ObservableObject {
             NSWorkspace.shared.open(exportFolder)
             infoMessage = "Export bundle создан"
         } catch { errorMessage = "Export error: \(error.localizedDescription)" }
+        #else
+        errorMessage = "Export bundle доступен только на AppKit-платформах"
+        #endif
     }
 
     func resetDemoData() {

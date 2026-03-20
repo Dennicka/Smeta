@@ -82,9 +82,12 @@ enum BackupServiceError: LocalizedError {
 }
 
 final class BackupService {
-    init(db: SQLiteDatabase) {}
+    private let db: SQLiteDatabase
+
+    init(db: SQLiteDatabase) { self.db = db }
 
     func backupViaDialog() throws { throw BackupServiceError.unsupportedPlatform }
     func restoreViaDialog() throws { throw BackupServiceError.unsupportedPlatform }
+    func dataLocation() -> URL { db.dataFolder() }
 }
 #endif
