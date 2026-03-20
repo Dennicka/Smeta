@@ -23,19 +23,23 @@ struct WorksView: View {
                 Toggle("Только активные", isOn: $activeOnly)
             }
             HStack {
-                TextField("RU", text: $draft.name)
-                TextField("SV", text: $draft.swedishName)
-                TextField("Ед.", text: $draft.unit)
-                TextField("Норма ч/ед", value: $draft.baseRatePerUnitHour, format: .number)
-                TextField("Цена продажи", value: $draft.basePrice, format: .number)
-                TextField("Цена закупки", value: $draft.basePurchasePrice, format: .number)
-                TextField("Скорость slow", value: $draft.slowSpeed, format: .number)
-                TextField("Скорость med", value: $draft.mediumSpeed, format: .number)
-                TextField("Скорость fast", value: $draft.fastSpeed, format: .number)
-                TextField("Описание", text: $draft.description)
-                TextField("Applicability", text: $draft.applicability)
-                TextField("Category ID", text: $createCategoryIdText)
-                TextField("Subcategory ID", text: $createSubcategoryIdText)
+                Group {
+                    TextField("RU", text: $draft.name)
+                    TextField("SV", text: $draft.swedishName)
+                    TextField("Ед.", text: $draft.unit)
+                    TextField("Норма ч/ед", value: $draft.baseRatePerUnitHour, format: .number)
+                    TextField("Цена продажи", value: $draft.basePrice, format: .number)
+                    TextField("Цена закупки", value: $draft.basePurchasePrice, format: .number)
+                    TextField("Скорость slow", value: $draft.slowSpeed, format: .number)
+                }
+                Group {
+                    TextField("Скорость med", value: $draft.mediumSpeed, format: .number)
+                    TextField("Скорость fast", value: $draft.fastSpeed, format: .number)
+                    TextField("Описание", text: $draft.description)
+                    TextField("Applicability", text: $draft.applicability)
+                    TextField("Category ID", text: $createCategoryIdText)
+                    TextField("Subcategory ID", text: $createSubcategoryIdText)
+                }
             }
             HStack {
                 TextField("Complexity", value: $draft.complexityCoefficient, format: .number)
@@ -137,30 +141,38 @@ private struct WorkEditSheet: View {
     var body: some View {
         VStack(spacing: 10) {
             Text("Редактирование работы").font(.headline)
-            TextField("RU", text: $draft.name)
-            TextField("SV", text: $draft.swedishName)
-            TextField("Ед.", text: $draft.unit)
-            TextField("Норма", value: $draft.baseRatePerUnitHour, format: .number)
-            TextField("Цена", value: $draft.basePrice, format: .number)
-            TextField("Закупка", value: $draft.basePurchasePrice, format: .number)
-            TextField("Почасовая", value: $draft.hourlyPrice, format: .number)
-            TextField("Slow", value: $draft.slowSpeed, format: .number)
-            TextField("Med", value: $draft.mediumSpeed, format: .number)
-            TextField("Fast", value: $draft.fastSpeed, format: .number)
-            TextField("Описание", text: $draft.description)
-            TextField("Applicability", text: $draft.applicability)
-            TextField("Category ID", text: $categoryIdText)
-            TextField("Subcategory ID", text: $subcategoryIdText)
-            TextField("Complexity", value: $draft.complexityCoefficient, format: .number)
-            TextField("Height coef", value: $draft.heightCoefficient, format: .number)
-            TextField("Condition coef", value: $draft.conditionCoefficient, format: .number)
-            TextField("Urgency coef", value: $draft.urgencyCoefficient, format: .number)
-            TextField("Accessibility coef", value: $draft.accessibilityCoefficient, format: .number)
-            TextField("Доп. часы", value: $draft.additionalLaborHours, format: .number)
-            TextField("Доп. расход", value: $draft.additionalMaterialUsage, format: .number)
-            Toggle("Активна", isOn: $draft.isActive)
-            Toggle("ROT", isOn: $draft.rotEligible)
-            Toggle("В стандартную оферту", isOn: $draft.includeInStandardOffer)
+            Group {
+                TextField("RU", text: $draft.name)
+                TextField("SV", text: $draft.swedishName)
+                TextField("Ед.", text: $draft.unit)
+                TextField("Норма", value: $draft.baseRatePerUnitHour, format: .number)
+                TextField("Цена", value: $draft.basePrice, format: .number)
+                TextField("Закупка", value: $draft.basePurchasePrice, format: .number)
+                TextField("Почасовая", value: $draft.hourlyPrice, format: .number)
+            }
+            Group {
+                TextField("Slow", value: $draft.slowSpeed, format: .number)
+                TextField("Med", value: $draft.mediumSpeed, format: .number)
+                TextField("Fast", value: $draft.fastSpeed, format: .number)
+                TextField("Описание", text: $draft.description)
+                TextField("Applicability", text: $draft.applicability)
+                TextField("Category ID", text: $categoryIdText)
+                TextField("Subcategory ID", text: $subcategoryIdText)
+            }
+            Group {
+                TextField("Complexity", value: $draft.complexityCoefficient, format: .number)
+                TextField("Height coef", value: $draft.heightCoefficient, format: .number)
+                TextField("Condition coef", value: $draft.conditionCoefficient, format: .number)
+                TextField("Urgency coef", value: $draft.urgencyCoefficient, format: .number)
+                TextField("Accessibility coef", value: $draft.accessibilityCoefficient, format: .number)
+                TextField("Доп. часы", value: $draft.additionalLaborHours, format: .number)
+                TextField("Доп. расход", value: $draft.additionalMaterialUsage, format: .number)
+            }
+            Group {
+                Toggle("Активна", isOn: $draft.isActive)
+                Toggle("ROT", isOn: $draft.rotEligible)
+                Toggle("В стандартную оферту", isOn: $draft.includeInStandardOffer)
+            }
             HStack {
                 Button("Отмена") { dismiss() }
                 Button("Сохранить") {
