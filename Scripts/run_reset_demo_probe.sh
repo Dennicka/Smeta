@@ -36,6 +36,8 @@ swiftc \
   "${ROOT_DIR}/Sources/SmetaApp/Data/SQLiteHelpers.swift" \
   "${ROOT_DIR}/Sources/SmetaApp/Data/SQLiteDatabase.swift" \
   "${ROOT_DIR}/Sources/SmetaApp/Models/Entities.swift" \
+  "${ROOT_DIR}/Sources/SmetaApp/Services/EstimateCalculator.swift" \
+  "${ROOT_DIR}/Sources/SmetaApp/Services/EstimateLineIdentityValidator.swift" \
   "${ROOT_DIR}/Sources/SmetaApp/Repositories/AppRepository.swift" \
   "${ROOT_DIR}/Sources/SmetaApp/Repositories/AppRepository+Stage2.swift" \
   "${ROOT_DIR}/Scripts/reset_demo_probe.swift" \
