@@ -101,9 +101,9 @@ swift run SmetaApp
 Собирает `release/Smeta.app`.
 
 ```bash
-./Scripts/macos_smoke_check.sh
+SMETA_ENABLE_RUNTIME_UI_SMOKE=1 ./Scripts/macos_smoke_check.sh
 ```
-Канонический runtime smoke:
+Канонический runtime smoke (macOS):
 - проверяет operational runtime (не только launch/window),
 - отдельно проверяет controlled startup failure classification,
 - имеет negative criterion (должен падать при мёртвой interactive chain),
