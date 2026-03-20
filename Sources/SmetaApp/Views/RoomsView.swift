@@ -216,17 +216,21 @@ private struct RoomEditSheet: View {
     var body: some View {
         VStack(spacing: 10) {
             Text("Редактирование помещения").font(.headline)
-            TextField("Название", text: $draft.name)
-            TextField("Тип", text: $draft.roomType)
-            TextField("Состояние поверхности", text: $draft.surfaceCondition)
-            TextField("Площадь", text: $areaText)
-            TextField("Длина", text: $lengthText)
-            TextField("Ширина", text: $widthText)
-            TextField("Высота", text: $heightText)
-            TextField("Корр. стен", text: $adjustmentText)
-            TextField("Заметки", text: $draft.notes)
-            TextField("Фото path", text: $draft.photoPath)
-            TextField("RoomTemplate ID", text: $roomTemplateIdText)
+            Group {
+                TextField("Название", text: $draft.name)
+                TextField("Тип", text: $draft.roomType)
+                TextField("Состояние поверхности", text: $draft.surfaceCondition)
+                TextField("Площадь", text: $areaText)
+                TextField("Длина", text: $lengthText)
+                TextField("Ширина", text: $widthText)
+            }
+            Group {
+                TextField("Высота", text: $heightText)
+                TextField("Корр. стен", text: $adjustmentText)
+                TextField("Заметки", text: $draft.notes)
+                TextField("Фото path", text: $draft.photoPath)
+                TextField("RoomTemplate ID", text: $roomTemplateIdText)
+            }
             HStack {
                 Button("Отмена") { dismiss() }
                 Button("Сохранить") {

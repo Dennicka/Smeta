@@ -125,20 +125,24 @@ private struct MaterialEditSheet: View {
     var body: some View {
         VStack(spacing: 10) {
             Text("Редактирование материала").font(.headline)
-            TextField("RU", text: $draft.name)
-            TextField("SV", text: $draft.swedishName)
-            TextField("Ед.", text: $draft.unit)
-            TextField("Цена продажи", value: $draft.basePrice, format: .number)
-            TextField("Закупка", value: $draft.purchasePrice, format: .number)
-            TextField("Наценка %", value: $draft.markupPercent, format: .number)
-            TextField("SKU", text: $draft.sku)
-            TextField("Расход/ед", value: $draft.usagePerWorkUnit, format: .number)
-            TextField("Упаковка", value: $draft.packageSize, format: .number)
-            TextField("Остаток", value: $draft.stock, format: .number)
-            TextField("Category ID", text: $categoryIdText)
-            TextField("Supplier ID", text: $supplierIdText)
-            TextField("Комментарий", text: $draft.comment)
-            Toggle("Активен", isOn: $draft.isActive)
+            Group {
+                TextField("RU", text: $draft.name)
+                TextField("SV", text: $draft.swedishName)
+                TextField("Ед.", text: $draft.unit)
+                TextField("Цена продажи", value: $draft.basePrice, format: .number)
+                TextField("Закупка", value: $draft.purchasePrice, format: .number)
+                TextField("Наценка %", value: $draft.markupPercent, format: .number)
+                TextField("SKU", text: $draft.sku)
+            }
+            Group {
+                TextField("Расход/ед", value: $draft.usagePerWorkUnit, format: .number)
+                TextField("Упаковка", value: $draft.packageSize, format: .number)
+                TextField("Остаток", value: $draft.stock, format: .number)
+                TextField("Category ID", text: $categoryIdText)
+                TextField("Supplier ID", text: $supplierIdText)
+                TextField("Комментарий", text: $draft.comment)
+                Toggle("Активен", isOn: $draft.isActive)
+            }
             HStack {
                 Button("Отмена") { dismiss() }
                 Button("Сохранить") {
