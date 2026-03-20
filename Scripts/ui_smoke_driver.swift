@@ -38,9 +38,25 @@ func hasAccessibilityPermission() -> Bool {
     return AXIsProcessTrustedWithOptions(options)
 }
 
-func runningApp() -> NSRunningApplication? {
-    NSRunningApplication.runningApplications(withBundleIdentifier: "SmetaApp").first
-        ?? NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == "SmetaApp" })
+func runningAppNow() -> NSRunningApplication? {
+    let running = NSWorkspace.shared.runningApplications
+    return running.first(where: { $0.bundleIdentifier == "SmetaApp" })
+        ?? running.first(where: { $0.localizedName == "SmetaApp" })
+        ?? running.first(where: { app in
+            app.executableURL?.lastPathComponent == "SmetaApp"
+        })
+}
+
+func runningApp(timeout: TimeInterval = 10) -> NSRunningApplication? {
+    var app = runningAppNow()
+    if app != nil {
+        return app
+    }
+    let found = waitUntil(timeout: timeout, poll: 0.25) {
+        app = runningAppNow()
+        return app != nil
+    }
+    return found ? app : nil
 }
 
 func axApp(for processIdentifier: pid_t) -> AXUIElement {
