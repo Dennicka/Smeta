@@ -42,7 +42,12 @@ func makeBaseContext() -> DocumentBuildContext {
         workItemsById: [100: work],
         materialItemsById: [200: material],
         businessDocuments: [],
-        businessDocumentLinesByDocumentId: [:]
+        businessDocumentLinesByDocumentId: [:],
+        taxProfiles: [
+            TaxProfile(id: 1, name: "B2C Moms", customerType: CustomerType.b2c.rawValue, taxMode: TaxMode.normal.rawValue, vatRate: 0.25, rotPercent: 0.3, active: true),
+            TaxProfile(id: 2, name: "B2B Moms", customerType: CustomerType.b2b.rawValue, taxMode: TaxMode.normal.rawValue, vatRate: 0.25, rotPercent: 0, active: true),
+            TaxProfile(id: 3, name: "B2B Reverse Charge", customerType: CustomerType.b2b.rawValue, taxMode: TaxMode.reverseCharge.rawValue, vatRate: 0, rotPercent: 0, active: true)
+        ]
     )
 }
 
