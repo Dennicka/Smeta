@@ -896,6 +896,17 @@ final class AppRepository {
         return result
     }
 
+    private func scalarCount(_ sql: String) throws -> Int {
+        var result = 0
+        try db.withStatement(sql) { s in
+            guard sqlite3_step(s) == SQLITE_ROW else {
+                throw DatabaseError.executeFailed("Не удалось получить count")
+            }
+            result = Int(sqlite3_column_int64(s, 0))
+        }
+        return result
+    }
+
     private func scalarCount(_ sql: String, bindValues: [Int64]) throws -> Int {
         var result = 0
         try db.withStatement(sql) { s in
