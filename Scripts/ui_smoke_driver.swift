@@ -151,12 +151,17 @@ func label(of element: AXUIElement) -> String? {
     return nil
 }
 
+func enabled(of element: AXUIElement) -> Bool {
+    (copyAttribute(element, name: kAXEnabledAttribute as String) as? Bool) ?? true
+}
+
 func elementSummary(_ element: AXUIElement) -> String {
     let id = identifier(of: element) ?? "<none>"
     let elementRole = role(of: element) ?? "<unknown>"
     let elementLabel = label(of: element) ?? "<none>"
     let supportedActions = actions(of: element)
-    return "id=\(id) role=\(elementRole) label=\(elementLabel) actions=\(supportedActions)"
+    let isEnabled = enabled(of: element)
+    return "id=\(id) role=\(elementRole) label=\(elementLabel) enabled=\(isEnabled) actions=\(supportedActions)"
 }
 
 func firstPressableDescendant(from element: AXUIElement) -> AXUIElement? {
@@ -188,27 +193,105 @@ func resolvePressTarget(from element: AXUIElement) -> AXUIElement? {
     if actions(of: element).contains(kAXPressAction as String) {
         return element
     }
-    if let descendant = firstPressableDescendant(from: element) {
-        return descendant
-    }
     if let ancestor = firstPressableAncestor(from: element) {
         return ancestor
+    }
+    if let descendant = firstPressableDescendant(from: element) {
+        return descendant
     }
     return nil
 }
 
+func axErrorName(_ error: AXError) -> String {
+    switch error {
+    case .success: return "success"
+    case .failure: return "failure"
+    case .illegalArgument: return "illegalArgument"
+    case .invalidUIElement: return "invalidUIElement"
+    case .invalidUIElementObserver: return "invalidUIElementObserver"
+    case .cannotComplete: return "cannotComplete"
+    case .attributeUnsupported: return "attributeUnsupported"
+    case .actionUnsupported: return "actionUnsupported"
+    case .notificationUnsupported: return "notificationUnsupported"
+    case .notImplemented: return "notImplemented"
+    case .notificationAlreadyRegistered: return "notificationAlreadyRegistered"
+    case .notificationNotRegistered: return "notificationNotRegistered"
+    case .apiDisabled: return "apiDisabled"
+    case .noValue: return "noValue"
+    case .parameterizedAttributeUnsupported: return "parameterizedAttributeUnsupported"
+    case .notEnoughPrecision: return "notEnoughPrecision"
+    @unknown default: return "unknown"
+    }
+}
+
+func candidateKey(_ element: AXUIElement) -> String {
+    "\(CFHash(element))|\(identifier(of: element) ?? "")|\(role(of: element) ?? "")|\(label(of: element) ?? "")"
+}
+
+func pressCandidates(from element: AXUIElement, maxDescendants: Int = 16) -> [AXUIElement] {
+    var candidates: [AXUIElement] = []
+    var seen = Set<String>()
+
+    func appendUnique(_ candidate: AXUIElement) {
+        let key = candidateKey(candidate)
+        guard !seen.contains(key) else { return }
+        seen.insert(key)
+        candidates.append(candidate)
+    }
+
+    appendUnique(element)
+    var current = parent(of: element)
+    var depth = 0
+    while let ancestor = current, depth < 6 {
+        appendUnique(ancestor)
+        current = parent(of: ancestor)
+        depth += 1
+    }
+
+    var queue = children(of: element)
+    while !queue.isEmpty && candidates.count < maxDescendants + 8 {
+        let next = queue.removeFirst()
+        appendUnique(next)
+        queue.append(contentsOf: children(of: next))
+    }
+    return candidates
+}
+
 func press(_ element: AXUIElement, step: String) throws {
-    guard let target = waitForResolvedTarget(timeout: 2.0, element: element) else {
+    guard waitUntil(timeout: 2.0, poll: 0.1, condition: { enabled(of: element) }) else {
+        throw UISmokeError.actionFailed(
+            "AXPress source element not enabled at step=\(step) source={\(elementSummary(element))}"
+        )
+    }
+    guard let initialTarget = waitForResolvedTarget(timeout: 2.0, element: element) else {
         throw UISmokeError.actionFailed(
             "AXPress target unresolved at step=\(step) element={\(elementSummary(element))}"
         )
     }
-    let status = AXUIElementPerformAction(target, kAXPressAction as CFString)
-    guard status == .success else {
-        throw UISmokeError.actionFailed(
-            "AXPress failed with status \(status.rawValue) at step=\(step) target={\(elementSummary(target))} original={\(elementSummary(element))}"
-        )
+
+    let candidates = pressCandidates(from: initialTarget)
+    var attempts: [String] = []
+    for (index, candidate) in candidates.enumerated() {
+        let candidateActions = actions(of: candidate)
+        let supportsPress = candidateActions.contains(kAXPressAction as String)
+        let isEnabled = enabled(of: candidate)
+        let prefix = "candidate[\(index)] supportsPress=\(supportsPress) enabled=\(isEnabled)"
+        if !supportsPress || !isEnabled {
+            attempts.append("\(prefix) skipped {\(elementSummary(candidate))}")
+            continue
+        }
+        let status = AXUIElementPerformAction(candidate, kAXPressAction as CFString)
+        guard status == .success else {
+            attempts.append("\(prefix) status=\(status.rawValue) (\(axErrorName(status))) {\(elementSummary(candidate))}")
+            continue
+        }
+        attempts.append("\(prefix) status=0 (success) {\(elementSummary(candidate))}")
+        return
     }
+
+    throw UISmokeError.actionFailed(
+        "AXPress failed at step=\(step) original={\(elementSummary(element))} resolved={\(elementSummary(initialTarget))} attempts=\(attempts.joined(separator: " || "))"
+    )
 }
 
 func waitForResolvedTarget(timeout: TimeInterval, element: AXUIElement) -> AXUIElement? {
@@ -246,6 +329,7 @@ func waitForElement(appElement: AXUIElement, identifier target: String, timeout:
 func runOperational() throws {
     guard let app = runningApp() else { throw UISmokeError.appNotFound }
     app.activate(options: [.activateIgnoringOtherApps])
+    _ = waitUntil(timeout: 2.0, poll: 0.1) { app.isActive }
 
     let appElement = axApp(for: app.processIdentifier)
     let hasWindow = waitUntil(timeout: 20) {
