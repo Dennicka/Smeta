@@ -22,6 +22,9 @@ operational_log="$log_dir/runtime-operational.log"
 controlled_failure_log="$log_dir/runtime-controlled-failure.log"
 negative_log="$log_dir/runtime-negative.log"
 driver_log="$log_dir/runtime-driver.log"
+driver_operational_log="$log_dir/runtime-driver-operational.log"
+driver_controlled_failure_log="$log_dir/runtime-driver-controlled-failure.log"
+driver_negative_log="$log_dir/runtime-driver-negative.log"
 db_name="smeta-runtime-smoke.sqlite"
 db_path="$HOME/Library/Application Support/Smeta/$db_name"
 driver_script="Scripts/ui_smoke_driver.swift"
@@ -32,7 +35,8 @@ if [[ ! -f "$exe_path" ]]; then
   exit 1
 fi
 
-rm -f "$operational_log" "$controlled_failure_log" "$negative_log" "$driver_log" "$db_path"
+rm -f "$operational_log" "$controlled_failure_log" "$negative_log" "$driver_log" \
+  "$driver_operational_log" "$driver_controlled_failure_log" "$driver_negative_log" "$db_path"
 
 echo "==> Canonical runtime smoke checks"
 echo "1) Bundle found: $app_path"
@@ -76,57 +80,67 @@ stop_app() {
 
 echo "==> [A+B+C+D+E+F] operational runtime probe"
 run_app "$operational_log" env
-if ! run_driver "operational" "$driver_log"; then
-  handle_driver_blocked_if_any "$driver_log"
+if ! run_driver "operational" "$driver_operational_log"; then
+  handle_driver_blocked_if_any "$driver_operational_log"
   echo "ERROR: operational probe failed."
   cat "$operational_log"
-  cat "$driver_log"
+  cat "$driver_operational_log"
   stop_app
   exit 1
 fi
 stop_app
-if ! grep -q "SMETA_UI_SMOKE verdict=PASS classification=operational_runtime_success" "$driver_log"; then
+if ! grep -q "SMETA_UI_SMOKE verdict=PASS classification=operational_runtime_success" "$driver_operational_log"; then
   echo "ERROR: operational UI driver verdict missing"
   cat "$operational_log"
-  cat "$driver_log"
+  cat "$driver_operational_log"
   exit 1
 fi
 
 echo "==> [C/H] controlled startup failure must not be treated as operational PASS"
 run_app "$controlled_failure_log" env SMETA_FORCE_BOOTSTRAP_FAILURE=1
-if ! run_driver "controlled_failure" "$driver_log"; then
-  handle_driver_blocked_if_any "$driver_log"
+if ! run_driver "controlled_failure" "$driver_controlled_failure_log"; then
+  handle_driver_blocked_if_any "$driver_controlled_failure_log"
   echo "ERROR: controlled failure probe failed."
   cat "$controlled_failure_log"
-  cat "$driver_log"
+  cat "$driver_controlled_failure_log"
   stop_app
   exit 1
 fi
 stop_app
-if ! grep -q "SMETA_UI_SMOKE verdict=PASS classification=controlled_launch_failure" "$driver_log"; then
+if ! grep -q "SMETA_UI_SMOKE verdict=PASS classification=controlled_launch_failure" "$driver_controlled_failure_log"; then
   echo "ERROR: controlled failure UI driver verdict missing"
   cat "$controlled_failure_log"
-  cat "$driver_log"
+  cat "$driver_controlled_failure_log"
   exit 1
 fi
 
 echo "==> [G] negative check: dead interaction chain must FAIL"
 set +e
 run_app "$negative_log" env SMETA_SMOKE_DISABLE_CALCULATE=1
-run_driver "operational" "$driver_log"
+run_driver "operational" "$driver_negative_log"
 driver_negative_exit=$?
 set -e
 if [[ $driver_negative_exit -ne 0 ]]; then
-  handle_driver_blocked_if_any "$driver_log"
+  handle_driver_blocked_if_any "$driver_negative_log"
 fi
 stop_app
 if [[ $driver_negative_exit -eq 0 ]]; then
   echo "ERROR: negative probe unexpectedly passed."
   cat "$negative_log"
-  cat "$driver_log"
+  cat "$driver_negative_log"
   exit 1
 fi
-grep -q "SMETA_UI_SMOKE verdict=FAIL classification=operational" "$driver_log"
+grep -q "SMETA_UI_SMOKE verdict=FAIL classification=operational" "$driver_negative_log"
+
+{
+  echo "SMETA_UI_SMOKE verdict=PASS classification=canonical_runtime_smoke"
+  echo "operational_driver_log=$repo_root/$driver_operational_log"
+  grep -m1 "SMETA_UI_SMOKE verdict=" "$driver_operational_log" || true
+  echo "controlled_failure_driver_log=$repo_root/$driver_controlled_failure_log"
+  grep -m1 "SMETA_UI_SMOKE verdict=" "$driver_controlled_failure_log" || true
+  echo "negative_driver_log=$repo_root/$driver_negative_log"
+  grep -m1 "SMETA_UI_SMOKE verdict=" "$driver_negative_log" || true
+} >"$driver_log"
 
 echo "==> PASS: canonical runtime smoke requires operational interactivity"
 echo "Operational log: $repo_root/$operational_log"
