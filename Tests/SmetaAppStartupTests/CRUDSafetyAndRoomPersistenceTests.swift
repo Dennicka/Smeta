@@ -8,17 +8,16 @@ final class CRUDSafetyAndRoomPersistenceTests: XCTestCase {
         defer { cleanupSQLiteArtifacts(at: dbPath) }
         try repo.performLaunchBootstrapWrites()
 
-        let client = try XCTUnwrap(
-            try repo.clients().first(where: { candidate in
-                (try? repo.properties(for: candidate.id).isEmpty == false) ?? false
-            })
+        let project = try XCTUnwrap(try repo.projects().first)
+        let property = try XCTUnwrap(
+            try repo.properties(for: project.clientId).first(where: { $0.id == project.propertyId })
         )
+        let client = try XCTUnwrap(try repo.clients().first(where: { $0.id == project.clientId }))
+
         XCTAssertThrowsError(try repo.deleteClient(id: client.id))
 
-        let property = try XCTUnwrap(try repo.properties(for: client.id).first)
         XCTAssertThrowsError(try repo.deleteProperty(id: property.id))
 
-        let project = try XCTUnwrap(try repo.projects().first(where: { $0.clientId == client.id }))
         XCTAssertThrowsError(try repo.deleteProject(id: project.id))
 
         let room = try XCTUnwrap(try repo.rooms(projectId: project.id).first)
