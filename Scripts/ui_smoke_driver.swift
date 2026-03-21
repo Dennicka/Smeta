@@ -389,6 +389,10 @@ func waitForElement(appElement: AXUIElement, identifier target: String, timeout:
     return findElement(root: window, identifier: target)
 }
 
+func smokeMarkerValue(window: AXUIElement, identifier: String) -> String {
+    textValue(root: window, identifier: identifier) ?? "<missing>"
+}
+
 func runOperational() throws {
     guard let app = runningApp() else { throw UISmokeError.appNotFound }
     app.activate(options: [.activateIgnoringOtherApps])
@@ -462,15 +466,29 @@ func runOperational() throws {
     }
     try press(runCalculation, step: "run-calculation")
 
+    let rowsBefore = smokeMarkerValue(window: window, identifier: "smoke.calculationRows")
+    let invocationsBefore = smokeMarkerValue(window: window, identifier: "smoke.calculationInvocationCount")
+
+    var latestRowsRaw = rowsBefore
+    var latestInvocationsRaw = invocationsBefore
     let hasRows = waitUntil(timeout: 6) {
-        guard let rowsRaw = textValue(root: window, identifier: "smoke.calculationRows"),
-              let rows = Int(rowsRaw.split(separator: ":").last ?? "0") else {
+        latestRowsRaw = smokeMarkerValue(window: window, identifier: "smoke.calculationRows")
+        latestInvocationsRaw = smokeMarkerValue(window: window, identifier: "smoke.calculationInvocationCount")
+        guard let rows = Int(latestRowsRaw.split(separator: ":").last ?? "0") else {
             return false
         }
         return rows > 0
     }
     guard hasRows else {
-        throw UISmokeError.invalidState("calculation did not produce rows through UI path")
+        let selectedProjectId = smokeMarkerValue(window: window, identifier: "smoke.selectedProject")
+        let selectedProjectName = smokeMarkerValue(window: window, identifier: "smoke.selectedProjectName")
+        let errorMessage = smokeMarkerValue(window: window, identifier: "smoke.errorMessage")
+        let infoMessage = smokeMarkerValue(window: window, identifier: "smoke.infoMessage")
+        throw UISmokeError.invalidState(
+            """
+            calculation did not produce rows through UI path; rowsRaw=\(latestRowsRaw); selectedProject=\(selectedProjectId); selectedProjectName=\(selectedProjectName); invocationBefore=\(invocationsBefore); invocationAfter=\(latestInvocationsRaw); error=\(errorMessage); info=\(infoMessage)
+            """
+        )
     }
 }
 
