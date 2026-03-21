@@ -131,8 +131,11 @@ func findButtonWithPrefix(root: AXUIElement, prefix: String, excluding: String) 
 }
 
 func parent(of element: AXUIElement) -> AXUIElement? {
-    guard let parent = copyAttribute(element, name: kAXParentAttribute as String) else { return nil }
-    return parent as! AXUIElement
+    var value: CFTypeRef?
+    let status = AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &value)
+    guard status == .success, let value else { return nil }
+    guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    return unsafeBitCast(value, to: AXUIElement.self)
 }
 
 func actions(of element: AXUIElement) -> [String] {
@@ -156,13 +159,55 @@ func enabled(of element: AXUIElement) -> Bool {
     (copyAttribute(element, name: kAXEnabledAttribute as String) as? Bool) ?? true
 }
 
+func subrole(of element: AXUIElement) -> String? {
+    copyAttribute(element, name: kAXSubroleAttribute as String) as? String
+}
+
+func frame(of element: AXUIElement) -> CGRect? {
+    guard let value = copyAttribute(element, name: kAXFrameAttribute as String) else { return nil }
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+    let axValue = value as! AXValue
+    var frame = CGRect.zero
+    guard AXValueGetType(axValue) == .cgRect else { return nil }
+    guard AXValueGetValue(axValue, .cgRect, &frame) else { return nil }
+    return frame
+}
+
+@discardableResult
+func coordinateClick(_ element: AXUIElement) -> AXError {
+    guard let frame = frame(of: element), frame.width > 0, frame.height > 0 else {
+        return .noValue
+    }
+    let center = CGPoint(x: frame.midX, y: frame.midY)
+    guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: center, mouseButton: .left),
+          let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: center, mouseButton: .left) else {
+        return .failure
+    }
+    down.post(tap: .cghidEventTap)
+    up.post(tap: .cghidEventTap)
+    return .success
+}
+
+@discardableResult
+func setFocused(_ element: AXUIElement) -> AXError {
+    let value = kCFBooleanTrue
+    return AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, value)
+}
+
 func elementSummary(_ element: AXUIElement) -> String {
     let id = identifier(of: element) ?? "<none>"
     let elementRole = role(of: element) ?? "<unknown>"
+    let elementSubrole = subrole(of: element) ?? "<none>"
     let elementLabel = label(of: element) ?? "<none>"
     let supportedActions = actions(of: element)
     let isEnabled = enabled(of: element)
-    return "id=\(id) role=\(elementRole) label=\(elementLabel) enabled=\(isEnabled) actions=\(supportedActions)"
+    let frameSummary: String
+    if let frame = frame(of: element) {
+        frameSummary = String(format: "{{x=%.1f,y=%.1f,w=%.1f,h=%.1f}}", frame.origin.x, frame.origin.y, frame.size.width, frame.size.height)
+    } else {
+        frameSummary = "<none>"
+    }
+    return "id=\(id) role=\(elementRole) subrole=\(elementSubrole) label=\(elementLabel) enabled=\(isEnabled) actions=\(supportedActions) frame=\(frameSummary)"
 }
 
 func firstPressableDescendant(from element: AXUIElement) -> AXUIElement? {
@@ -258,15 +303,16 @@ func pressCandidates(from element: AXUIElement, maxDescendants: Int = 16) -> [AX
     return candidates
 }
 
-func press(_ element: AXUIElement, step: String) throws {
-    guard waitUntil(timeout: 2.0, poll: 0.1, condition: { enabled(of: element) }) else {
+func press(_ element: AXUIElement, step: String, refreshElement: (() -> AXUIElement?)? = nil) throws {
+    let sourceElement = refreshElement?() ?? element
+    guard waitUntil(timeout: 2.0, poll: 0.1, condition: { enabled(of: sourceElement) }) else {
         throw UISmokeError.actionFailed(
-            "AXPress source element not enabled at step=\(step) source={\(elementSummary(element))}"
+            "AXPress source element not enabled at step=\(step) source={\(elementSummary(sourceElement))}"
         )
     }
-    guard let initialTarget = waitForResolvedTarget(timeout: 2.0, element: element) else {
+    guard let initialTarget = waitForResolvedTarget(timeout: 2.0, element: sourceElement) else {
         throw UISmokeError.actionFailed(
-            "AXPress target unresolved at step=\(step) element={\(elementSummary(element))}"
+            "AXPress target unresolved at step=\(step) element={\(elementSummary(sourceElement))}"
         )
     }
 
@@ -282,16 +328,32 @@ func press(_ element: AXUIElement, step: String) throws {
             continue
         }
         let status = AXUIElementPerformAction(candidate, kAXPressAction as CFString)
-        guard status == .success else {
+        if status == .success {
+            attempts.append("\(prefix) status=0 (success) {\(elementSummary(candidate))}")
+            return
+        }
+
+        let candidateRole = role(of: candidate) ?? ""
+        if candidateRole == kAXButtonRole as String && status == .attributeUnsupported {
+            let focusStatus = setFocused(candidate)
+            if focusStatus == .success {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+            let clickStatus = coordinateClick(candidate)
+            if clickStatus == .success {
+                attempts.append("\(prefix) status=\(status.rawValue) (\(axErrorName(status))) fallback=focus(\(focusStatus.rawValue):\(axErrorName(focusStatus)))>coordinateClick(0:success) {\(elementSummary(candidate))}")
+                return
+            }
+            attempts.append("\(prefix) status=\(status.rawValue) (\(axErrorName(status))) fallback=focus(\(focusStatus.rawValue):\(axErrorName(focusStatus)))>coordinateClick(\(clickStatus.rawValue):\(axErrorName(clickStatus))) {\(elementSummary(candidate))}")
+            continue
+        } else {
             attempts.append("\(prefix) status=\(status.rawValue) (\(axErrorName(status))) {\(elementSummary(candidate))}")
             continue
         }
-        attempts.append("\(prefix) status=0 (success) {\(elementSummary(candidate))}")
-        return
     }
 
     throw UISmokeError.actionFailed(
-        "AXPress failed at step=\(step) original={\(elementSummary(element))} resolved={\(elementSummary(initialTarget))} attempts=\(attempts.joined(separator: " || "))"
+        "AXPress failed at step=\(step) original={\(elementSummary(sourceElement))} resolved={\(elementSummary(initialTarget))} attempts=\(attempts.joined(separator: " || "))"
     )
 }
 
@@ -353,7 +415,10 @@ func runOperational() throws {
     guard let navProjects = waitForElement(appElement: appElement, identifier: "smoke.nav.projects", timeout: 8) else {
         throw UISmokeError.elementNotFound("smoke.nav.projects")
     }
-    try press(navProjects, step: "open-projects-tab")
+    try press(navProjects, step: "open-projects-tab", refreshElement: {
+        guard let activeWindow = currentWindow(of: appElement) else { return nil }
+        return findElement(root: activeWindow, identifier: "smoke.nav.projects")
+    })
     guard waitUntil(timeout: 8, condition: {
         guard let activeWindow = currentWindow(of: appElement) else { return false }
         return findElements(root: activeWindow) { element in
