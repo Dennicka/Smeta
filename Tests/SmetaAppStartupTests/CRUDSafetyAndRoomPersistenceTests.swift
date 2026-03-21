@@ -249,11 +249,11 @@ final class CRUDSafetyAndRoomPersistenceTests: XCTestCase {
 
         let client = try XCTUnwrap(vm.clients.first)
         let property = try XCTUnwrap(vm.properties.first(where: { $0.clientId == client.id }))
-        vm.addProject(clientId: client.id, propertyId: property.id, speedProfileId: speedProfileId, pricingMode: PricingMode.timeAndMaterials.rawValue, isDraft: false, name: "Roundtrip Project")
+        vm.addProject(clientId: client.id, propertyId: property.id, speedProfileId: speedProfileId, pricingMode: PricingMode.combined.rawValue, isDraft: false, name: "Roundtrip Project")
         try vm.reloadAll()
         let createdProject = try XCTUnwrap(vm.projects.first(where: { $0.name == "Roundtrip Project" }))
         XCTAssertEqual(createdProject.speedProfileId, speedProfileId)
-        XCTAssertEqual(createdProject.pricingMode, PricingMode.timeAndMaterials.rawValue)
+        XCTAssertEqual(createdProject.pricingMode, PricingMode.combined.rawValue)
         XCTAssertEqual(createdProject.isDraft, false)
     }
 
@@ -375,17 +375,21 @@ final class CRUDSafetyAndRoomPersistenceTests: XCTestCase {
     }
 
     private func firstId(in table: String, db: SQLiteDatabase) throws -> Int64? {
+        var id: Int64?
         try db.withStatement("SELECT id FROM \(table) ORDER BY id LIMIT 1") { stmt in
-            guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
-            return sqlite3_column_int64(stmt, 0)
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return }
+            id = sqlite3_column_int64(stmt, 0)
         }
+        return id
     }
 
     private func firstWorkSubcategoryId(categoryId: Int64, db: SQLiteDatabase) throws -> Int64? {
+        var id: Int64?
         try db.withStatement("SELECT id FROM work_subcategories WHERE category_id=? ORDER BY id LIMIT 1") { stmt in
             sqlite3_bind_int64(stmt, 1, categoryId)
-            guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
-            return sqlite3_column_int64(stmt, 0)
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return }
+            id = sqlite3_column_int64(stmt, 0)
         }
+        return id
     }
 }
