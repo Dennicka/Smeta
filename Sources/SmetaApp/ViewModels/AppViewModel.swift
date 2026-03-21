@@ -126,6 +126,7 @@ final class AppViewModel: ObservableObject {
     @Published var calculationRules: CalculationRules = .default
     @Published var selectedSpeedId: Int64 = 0
     @Published var calculationResult: CalculationResult?
+    @Published var calculationInvocationCount: Int = 0
 
     var filteredBusinessDocuments: [BusinessDocument] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -192,16 +193,58 @@ final class AppViewModel: ObservableObject {
 
     func ensureUISmokeBootstrapDataIfNeeded() throws {
         guard SmokeRuntimeConfig.isUISmokeEnabled else { return }
-        if projects.count >= 2 { return }
-        guard let clientId = clients.first?.id else {
-            throw NSError(domain: "Smeta.RuntimeProbe", code: 9101, userInfo: [NSLocalizedDescriptionKey: "No client available for UI smoke"])
+        if projects.count < 2 {
+            guard let clientId = clients.first?.id else {
+                throw NSError(domain: "Smeta.RuntimeProbe", code: 9101, userInfo: [NSLocalizedDescriptionKey: "No client available for UI smoke"])
+            }
+            guard let propertyId = properties.first(where: { $0.clientId == clientId })?.id ?? properties.first?.id else {
+                throw NSError(domain: "Smeta.RuntimeProbe", code: 9102, userInfo: [NSLocalizedDescriptionKey: "No property available for UI smoke"])
+            }
+            addProject(clientId: clientId, propertyId: propertyId, name: "UI Smoke Secondary Project")
+            if let errorMessage {
+                throw NSError(domain: "Smeta.RuntimeProbe", code: 9103, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+            }
         }
-        guard let propertyId = properties.first(where: { $0.clientId == clientId })?.id ?? properties.first?.id else {
-            throw NSError(domain: "Smeta.RuntimeProbe", code: 9102, userInfo: [NSLocalizedDescriptionKey: "No property available for UI smoke"])
+
+        try ensureUISmokeCalculationContour()
+    }
+
+    private func ensureUISmokeCalculationContour() throws {
+        guard let firstWork = works.first(where: \.isActive) ?? works.first else {
+            throw NSError(domain: "Smeta.RuntimeProbe", code: 9104, userInfo: [NSLocalizedDescriptionKey: "No work catalog item available for UI smoke"])
         }
-        addProject(clientId: clientId, propertyId: propertyId, name: "UI Smoke Secondary Project")
-        if let errorMessage {
-            throw NSError(domain: "Smeta.RuntimeProbe", code: 9103, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        guard let firstMaterial = materials.first(where: \.isActive) ?? materials.first else {
+            throw NSError(domain: "Smeta.RuntimeProbe", code: 9105, userInfo: [NSLocalizedDescriptionKey: "No material catalog item available for UI smoke"])
+        }
+
+        var changed = false
+        let smokeProjects = Array(projects.prefix(2))
+        for project in smokeProjects {
+            var room = rooms.first(where: { $0.projectId == project.id })
+            if room == nil {
+                let createdRoomId = try repository.createRoomWithAutoSurfaces(
+                    Room(id: 0, projectId: project.id, name: "UI Smoke Room", area: 12, height: 2.6)
+                )
+                room = Room(id: createdRoomId, projectId: project.id, name: "UI Smoke Room", area: 12, height: 2.6)
+                changed = true
+            }
+
+            guard let roomId = room?.id else {
+                continue
+            }
+
+            if selectedWorksByRoom[roomId, default: []].isEmpty {
+                try repository.replaceRoomWorkAssignments(roomId: roomId, workIds: [firstWork.id])
+                changed = true
+            }
+            if selectedMaterialsByRoom[roomId, default: []].isEmpty {
+                try repository.replaceRoomMaterialAssignments(roomId: roomId, materialIds: [firstMaterial.id])
+                changed = true
+            }
+        }
+
+        if changed {
+            try reloadAll()
         }
     }
 
@@ -822,6 +865,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func calculate() {
+        calculationInvocationCount += 1
         guard let project = selectedProject else {
             errorMessage = "Выберите проект перед расчётом"
             return
