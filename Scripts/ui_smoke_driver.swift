@@ -131,7 +131,8 @@ func findButtonWithPrefix(root: AXUIElement, prefix: String, excluding: String) 
 }
 
 func parent(of element: AXUIElement) -> AXUIElement? {
-    copyAttribute(element, name: kAXParentAttribute as String) as? AXUIElement
+    guard let parent = copyAttribute(element, name: kAXParentAttribute as String) else { return nil }
+    return parent as! AXUIElement
 }
 
 func actions(of element: AXUIElement) -> [String] {
