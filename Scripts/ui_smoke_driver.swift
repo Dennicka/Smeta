@@ -164,7 +164,7 @@ func subrole(of element: AXUIElement) -> String? {
 }
 
 func frame(of element: AXUIElement) -> CGRect? {
-    guard let value = copyAttribute(element, name: kAXFrameAttribute as String) else { return nil }
+    guard let value = copyAttribute(element, name: "AXFrame") else { return nil }
     guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
     let axValue = value as! AXValue
     var frame = CGRect.zero
@@ -190,7 +190,7 @@ func coordinateClick(_ element: AXUIElement) -> AXError {
 
 @discardableResult
 func setFocused(_ element: AXUIElement) -> AXError {
-    let value = kCFBooleanTrue
+    let value = NSNumber(value: true)
     return AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, value)
 }
 
