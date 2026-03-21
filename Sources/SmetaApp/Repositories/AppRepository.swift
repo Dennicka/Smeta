@@ -136,6 +136,60 @@ final class AppRepository {
         if try !clients().isEmpty { return }
         _ = try insertCompany(Company(id: 0, name: "NordBygg AB", orgNumber: "556000-1234", email: "info@nordbygg.se", phone: "+46 8 555 00 00"))
 
+        if try scalarCount("SELECT COUNT(1) FROM work_categories") == 0 {
+            let workCategoryId = try insertRow(
+                sql: "INSERT INTO work_categories (name,sort_order) VALUES (?,?)",
+                bindings: { stmt in
+                    bind(stmt, 1, "Отделочные работы")
+                    sqlite3_bind_int(stmt, 2, 0)
+                }
+            )
+            _ = try insertRow(
+                sql: "INSERT INTO work_subcategories (category_id,name,sort_order) VALUES (?,?,?)",
+                bindings: { stmt in
+                    sqlite3_bind_int64(stmt, 1, workCategoryId)
+                    bind(stmt, 2, "Покраска")
+                    sqlite3_bind_int(stmt, 3, 0)
+                }
+            )
+        }
+
+        if try scalarCount("SELECT COUNT(1) FROM material_categories") == 0 {
+            _ = try insertRow(
+                sql: "INSERT INTO material_categories (name,sort_order) VALUES (?,?)",
+                bindings: { stmt in
+                    bind(stmt, 1, "Лакокрасочные материалы")
+                    sqlite3_bind_int(stmt, 2, 0)
+                }
+            )
+        }
+
+        if try scalarCount("SELECT COUNT(1) FROM suppliers") == 0 {
+            _ = try insertRow(
+                sql: "INSERT INTO suppliers (name,contact,phone,email) VALUES (?,?,?,?)",
+                bindings: { stmt in
+                    bind(stmt, 1, "Demo Supplier AB")
+                    bind(stmt, 2, "Support")
+                    bind(stmt, 3, "+46 8 555 11 22")
+                    bind(stmt, 4, "support@demo-supplier.se")
+                }
+            )
+        }
+
+        if try scalarCount("SELECT COUNT(1) FROM room_templates") == 0 {
+            _ = try insertRow(
+                sql: "INSERT INTO room_templates (name,room_type,default_length,default_width,default_height,notes) VALUES (?,?,?,?,?,?)",
+                bindings: { stmt in
+                    bind(stmt, 1, "Стандартная комната")
+                    bind(stmt, 2, "default")
+                    sqlite3_bind_double(stmt, 3, 4.0)
+                    sqlite3_bind_double(stmt, 4, 3.0)
+                    sqlite3_bind_double(stmt, 5, 2.7)
+                    bind(stmt, 6, "")
+                }
+            )
+        }
+
         let c1 = try insertClient(Client(id: 0, name: "Anna Svensson", email: "anna@client.se", phone: "+46 70 111 22 33", address: "Stockholm"))
         let c2 = try insertClient(Client(id: 0, name: "Lars Holm", email: "lars@client.se", phone: "+46 70 444 55 66", address: "Uppsala"))
 
@@ -155,9 +209,23 @@ final class AppRepository {
         _ = try insertTemplate(DocumentTemplate(id: 0, name: "Offert Standard", language: "sv", headerText: "OFFERT", footerText: "Tack för förtroendet!", sortOrder: 0))
 
         let projectId = try insertProject(Project(id: 0, clientId: c1, propertyId: p1, name: "Ремонт кухни", speedProfileId: slow, createdAt: Date()))
-        _ = try insertRoom(Room(id: 0, projectId: projectId, name: "Кухня", area: 14, height: 2.7))
-        _ = try insertRoom(Room(id: 0, projectId: projectId, name: "Коридор", area: 8, height: 2.6))
+        let kitchenId = try insertRoom(Room(id: 0, projectId: projectId, name: "Кухня", area: 14, height: 2.7))
+        let corridorId = try insertRoom(Room(id: 0, projectId: projectId, name: "Коридор", area: 8, height: 2.6))
+        if let kitchen = try rooms(projectId: projectId).first(where: { $0.id == kitchenId }) {
+            try syncAutoSurfacesInternal(room: kitchen)
+        }
+        if let corridor = try rooms(projectId: projectId).first(where: { $0.id == corridorId }) {
+            try syncAutoSurfacesInternal(room: corridor)
+        }
 
+    }
+
+    private func insertRow(sql: String, bindings: (OpaquePointer) -> Void) throws -> Int64 {
+        try db.withStatement(sql) { stmt in
+            bindings(stmt)
+            try step(stmt)
+        }
+        return db.lastInsertedRowID()
     }
 
     func companies() throws -> [Company] { try fetch("SELECT id,name,org_number,email,phone FROM companies") { stmt in
