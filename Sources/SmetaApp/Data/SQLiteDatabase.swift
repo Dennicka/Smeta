@@ -848,11 +848,45 @@ final class SQLiteDatabase {
     ]
 
     func copyDatabase(to destination: URL) throws {
-        try checkpointWAL(mode: "FULL")
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        let manager = FileManager.default
+        if manager.fileExists(atPath: destination.path) {
+            try manager.removeItem(at: destination)
         }
-        try FileManager.default.copyItem(at: dbPath, to: destination)
+        var shouldCleanupDestination = true
+
+        var destinationDB: OpaquePointer?
+        let openResult = sqlite3_open_v2(
+            destination.path,
+            &destinationDB,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+            nil
+        )
+        guard openResult == SQLITE_OK, let destinationDB else {
+            throw DatabaseError.executeFailed("Не удалось открыть файл backup для записи")
+        }
+        defer {
+            if sqlite3_close(destinationDB) != SQLITE_OK {
+                sqlite3_close_v2(destinationDB)
+            }
+            if shouldCleanupDestination, manager.fileExists(atPath: destination.path) {
+                try? manager.removeItem(at: destination)
+            }
+        }
+
+        guard let sourceDB = db else {
+            throw DatabaseError.executeFailed("Соединение с основной базой не открыто")
+        }
+
+        guard let backup = sqlite3_backup_init(destinationDB, "main", sourceDB, "main") else {
+            throw DatabaseError.executeFailed(String(cString: sqlite3_errmsg(destinationDB)))
+        }
+
+        let stepResult = sqlite3_backup_step(backup, -1)
+        let finishResult = sqlite3_backup_finish(backup)
+        guard stepResult == SQLITE_DONE, finishResult == SQLITE_OK else {
+            throw DatabaseError.executeFailed("Не удалось создать корректный backup-снимок")
+        }
+        shouldCleanupDestination = false
     }
 
     func restoreDatabase(from source: URL) throws {
