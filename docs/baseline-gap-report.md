@@ -27,7 +27,7 @@
 | Påminnelse | UNVERIFIED | Есть builder от задолженности и draft path. | `Sources/SmetaApp/Services/DocumentDraftBuilder.swift`, `Sources/SmetaApp/ViewModels/AppViewModel.swift`, `Sources/SmetaApp/Views/Stage2Views.swift` | `Tests/SmetaAppTests/DocumentDraftBuilderTests.swift` | Нет runtime smoke по reminder flow | Нет доказанного end-to-end пользовательского сценария напоминания. |
 | ROT | UNVERIFIED | Поля/формулы в документах и налоговых профилях есть. | `Sources/SmetaApp/Services/DocumentDraftBuilder.swift`, `Sources/SmetaApp/Repositories/AppRepository+Stage2.swift`, `Sources/SmetaCore/Models/Entities.swift` | `Tests/SmetaAppTests/DocumentDraftBuilderTests.swift` (арифметика rot/vat в payload) | Нет runtime smoke, подтверждающего ROT в реальном пользовательском документном цикле | Тестируется вычислительная часть, но baseline-процесс в пользовательском контуре не доказан. |
 | MOMS / reverse charge | UNVERIFIED | Налоговые профили и reverseCharge guards реализованы. | `Sources/SmetaApp/Repositories/AppRepository+Stage2.swift`, `Sources/SmetaApp/ViewModels/AppViewModel.swift`, `Sources/SmetaApp/Services/DocumentDraftBuilder.swift` | `Tests/SmetaAppTests/DocumentDraftBuilderTests.swift` (reverse charge payload) | Нет runtime smoke по B2B reverse-charge сценарию | Нет подтверждённого e2e пользовательского контура. |
-| Оплаты / частичные оплаты | MISSING | Есть `registerPayment` и UI-форма, но baseline-контур платежей как принятый e2e не подтверждён. | `Sources/SmetaApp/Repositories/AppRepository+Stage2.swift`, `Sources/SmetaApp/ViewModels/AppViewModel.swift`, `Sources/SmetaApp/Views/Stage2Views.swift` (`PaymentsView`) | Прямых тестов на partial/full payment transitions в `Tests/` нет | Нет runtime smoke по оплатам | На текущем уровне это заготовка/частичная имплементация без доказанного baseline acceptance. |
+| Оплаты / частичные оплаты | DONE | Реализован рабочий контур partial/full payments: валидация входа, atomic registerPayment, корректные `paid_amount`/`balance_due`/status transitions, список платежей в UI и immediate refresh после записи. | `Sources/SmetaApp/Repositories/AppRepository+Stage2.swift`, `Sources/SmetaApp/ViewModels/AppViewModel.swift`, `Sources/SmetaApp/Views/Stage2Views.swift`, `Sources/SmetaApp/Services/DocumentDraftBuilder.swift` | `Tests/SmetaAppStartupTests/PaymentContourTests.swift` (A–G сценарии: partial/full/invalid/overpay/draft-reject/reload/reminder-outstanding compatibility) | Нет отдельного runtime smoke по payments-only | Блок закрыт на уровне baseline-контура; ограничение только в отсутствии выделенного runtime smoke test именно для payments screen. |
 | backup / restore | MISSING | Есть AppKit-диалоги и API копирования/restore, но нет подтверждённого baseline user flow acceptance. | `Sources/SmetaApp/Services/BackupService.swift`, `Sources/SmetaApp/Data/SQLiteDatabase.swift`, `Sources/SmetaApp/Views/SettingsView.swift` | В `Tests/` нет независимого end-to-end backup+restore acceptance теста | Текущий runtime smoke не закрывает backup/restore; macOS-only путь в Linux blocked | Без подтверждённого e2e этот baseline-пункт не может считаться принятым. |
 | PDF / print | MISSING | PDF export pipeline есть, но baseline сформулирован как «PDF / print», а print-контур не подтверждён как принят. | `Sources/SmetaApp/Services/DocumentExportPipeline.swift`, `Sources/SmetaApp/Services/PDFDocumentService.swift`, `Sources/SmetaApp/ViewModels/AppViewModel.swift`, `Sources/SmetaApp/Views/DocumentsView.swift` | Есть contour-тесты для PDF export: `Tests/SmetaAppStartupTests/BusinessDocumentPDFExportContourTests.swift` | Нет подтверждённого runtime acceptance по print/PDF визуальному сценарию | Из-за отсутствия доказанного print-пути и полного пользовательского acceptance пункт baseline считаем не принятым. |
 | Справочники и полная редактируемость из UI | MISSING | Редактирование покрывает не все справочники; часть экранов по сути read-only. | `Sources/SmetaApp/Views/WorksView.swift`, `Sources/SmetaApp/Views/MaterialsView.swift`, `Sources/SmetaApp/Views/SettingsView.swift`, `Sources/SmetaApp/Views/Stage2Views.swift` (`DocumentNumberingView`, `TaxSettingsView`) | Есть частичные roundtrip тесты: `Tests/SmetaAppStartupTests/CRUDSafetyAndRoomPersistenceTests.swift`, `Tests/SmetaAppStartupTests/StartupPersistentBootstrapTests.swift` | Нет runtime smoke на полный UI-edit контур справочников | Baseline требует полной редактируемости из UI; это сейчас не доказано и не собрано целиком. |
@@ -43,9 +43,10 @@
 - проекты;
 - помещения;
 - работы;
-- материалы.
+- материалы;
+- оплаты / частичные оплаты.
 
-Основание: по этим пунктам есть и реализованный пользовательский CRUD-контур в приложении, и прямое подтверждение через `Tests/SmetaAppStartupTests/CRUDSafetyAndRoomPersistenceTests.swift`.
+Основание: для CRUD-блоков есть прямое подтверждение через `Tests/SmetaAppStartupTests/CRUDSafetyAndRoomPersistenceTests.swift`; для payments-контурa есть отдельное подтверждение через `Tests/SmetaAppStartupTests/PaymentContourTests.swift`.
 
 ## Что нельзя считать принятым baseline на текущий момент
 - расчёт;
@@ -57,7 +58,6 @@
 - Påminnelse;
 - ROT;
 - MOMS / reverse charge;
-- оплаты / частичные оплаты;
 - backup / restore;
 - PDF / print;
 - справочники и полная редактируемость из UI.
