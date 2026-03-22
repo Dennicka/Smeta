@@ -61,3 +61,27 @@ Runtime UI smoke requires a self-hosted macOS environment. Keeping it manual and
 6. In GitHub Actions, run workflow **CI** manually and set `run_runtime_ui_smoke=true`.
 
 After the runner is online, the `runtime-ui-smoke` job executes full runtime smoke exactly as locally validated.
+
+## Artifacts and logs
+
+To simplify failure analysis, CI uploads diagnostics as GitHub Actions artifacts even when a job fails.
+
+Hosted job (`unit-and-build`) uploads:
+
+- `release/build-logs/**`
+- `.build/**/TestResults*` (if present)
+- available build contour logs (if created by scripts), including:
+  - `release/contour-logs/**`
+  - `release/**/contour*.log`
+  - `release/**/*contour*.log`
+
+Runtime smoke job (`runtime-ui-smoke`) uploads:
+
+- `release/smoke-logs/**`
+
+Why this matters:
+
+- failed runs keep actionable logs attached to the run page
+- local reproduction is faster because raw logs are downloadable
+- no need to rerun immediately just to inspect missing diagnostics
+

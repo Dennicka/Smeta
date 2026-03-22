@@ -11,6 +11,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
   unit-and-build:
     name: Unit and Build Contour
@@ -34,6 +37,19 @@ jobs:
       - name: Verify macOS app build contour
         run: bash Scripts/verify_macos_app_build_contour.sh
 
+      - name: Upload unit/build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-and-build-diagnostics
+          if-no-files-found: ignore
+          path: |
+            release/build-logs/**
+            .build/**/TestResults*
+            release/contour-logs/**
+            release/**/contour*.log
+            release/**/*contour*.log
+
   runtime-ui-smoke:
     name: Runtime UI Smoke (self-hosted macOS)
     runs-on: [self-hosted, macOS]
@@ -54,3 +70,12 @@ jobs:
 
       - name: Runtime UI smoke check
         run: SMETA_ENABLE_RUNTIME_UI_SMOKE=1 bash Scripts/macos_smoke_check.sh
+
+      - name: Upload runtime smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-ui-smoke-logs
+          if-no-files-found: ignore
+          path: |
+            release/smoke-logs/**
