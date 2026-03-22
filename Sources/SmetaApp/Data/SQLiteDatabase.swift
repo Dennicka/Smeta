@@ -864,10 +864,16 @@ final class SQLiteDatabase {
         guard openResult == SQLITE_OK, let destinationDB else {
             throw DatabaseError.executeFailed("Не удалось открыть файл backup для записи")
         }
-        defer {
-            if sqlite3_close(destinationDB) != SQLITE_OK {
-                sqlite3_close_v2(destinationDB)
+
+        var destinationHandle: OpaquePointer? = destinationDB
+        func closeDestinationHandle() {
+            guard let destinationHandle else { return }
+            if sqlite3_close(destinationHandle) != SQLITE_OK {
+                sqlite3_close_v2(destinationHandle)
             }
+        }
+        defer {
+            closeDestinationHandle()
             if shouldCleanupDestination, manager.fileExists(atPath: destination.path) {
                 try? manager.removeItem(at: destination)
             }
@@ -892,6 +898,9 @@ final class SQLiteDatabase {
                 "sqlite3_backup failed (step: \(stepResult), finish: \(finishResult), code: \(code)): \(message)"
             )
         }
+
+        closeDestinationHandle()
+        destinationHandle = nil
 
         do {
             try validateBackup(at: destination)
