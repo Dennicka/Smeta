@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_runtime_ui_smoke:
+        description: "Run runtime UI smoke on a self-hosted macOS runner"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  unit-and-build:
+    name: Unit and Build Contour
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Swift package clean
+        run: swift package clean
+
+      - name: Swift test
+        run: swift test
+
+      - name: Verify macOS app build contour
+        run: bash Scripts/verify_macos_app_build_contour.sh
+
+  runtime-ui-smoke:
+    name: Runtime UI Smoke (self-hosted macOS)
+    runs-on: [self-hosted, macOS]
+    needs: unit-and-build
+    if: github.event_name == 'workflow_dispatch' && inputs.run_runtime_ui_smoke == true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Verify macOS app build contour
+        run: bash Scripts/verify_macos_app_build_contour.sh
+
+      - name: Runtime UI smoke check
+        run: SMETA_ENABLE_RUNTIME_UI_SMOKE=1 bash Scripts/macos_smoke_check.sh
