@@ -84,6 +84,7 @@ Hosted job (`unit-and-build`) also uploads release build artifact:
 - artifact name: `smeta-release-app`
 - content path: `release/dist/**`
 - archive produced in CI: `release/dist/Smeta.app.zip` (packaged from `release/Smeta.app`)
+- build manifest produced in CI: `release/dist/build-manifest.txt`
 
 ## Release build artifacts (hosted CI)
 
@@ -97,12 +98,31 @@ Packaging behavior:
 1. Verifies `release/Smeta.app` exists.
 2. Creates `release/dist`.
 3. Builds `release/dist/Smeta.app.zip` using macOS-native `ditto`, preserving the app bundle structure.
+4. Generates `release/dist/build-manifest.txt` with build metadata.
+
+Manifest fields:
+
+- `repository`
+- `git_commit_sha`
+- `git_ref`
+- `git_ref_name`
+- `git_head_ref`
+- `git_branch_resolved` (`GITHUB_HEAD_REF` for PRs, otherwise `GITHUB_REF_NAME`)
+- `build_utc`
+- `xcode_version`
+- `swift_version`
+- `archive_path`
+- `archive_name`
+- `archive_sha256`
+- `archive_size_bytes`
+- `runner_os`
+- `runner_environment`
 
 Where to download:
 
 - Open a completed GitHub Actions run for workflow **CI**.
 - Open job **Unit and Build Contour**.
-- In **Artifacts**, download `smeta-release-app`.
+- In **Artifacts**, download `smeta-release-app` (contains both `Smeta.app.zip` and `build-manifest.txt`).
 
 Important scope note:
 

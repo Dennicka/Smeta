@@ -43,6 +43,35 @@ jobs:
           mkdir -p release/dist
           ditto -c -k --sequesterRsrc --keepParent release/Smeta.app release/dist/Smeta.app.zip
 
+      - name: Generate build manifest
+        run: |
+          ZIP_PATH="release/dist/Smeta.app.zip"
+          MANIFEST_PATH="release/dist/build-manifest.txt"
+          ZIP_SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
+          ZIP_SIZE_BYTES="$(wc -c < "$ZIP_PATH" | tr -d ' ')"
+          BUILD_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          XCODE_VERSION="$(xcodebuild -version | tr '\n' ';' | sed 's/;$//')"
+          SWIFT_VERSION="$(swift --version | head -n 1)"
+          GIT_BRANCH_RESOLVED="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+
+          printf '%s\n' \
+            "repository=${GITHUB_REPOSITORY}" \
+            "git_commit_sha=${GITHUB_SHA}" \
+            "git_ref=${GITHUB_REF}" \
+            "git_ref_name=${GITHUB_REF_NAME}" \
+            "git_head_ref=${GITHUB_HEAD_REF}" \
+            "git_branch_resolved=${GIT_BRANCH_RESOLVED}" \
+            "build_utc=${BUILD_UTC}" \
+            "xcode_version=${XCODE_VERSION}" \
+            "swift_version=${SWIFT_VERSION}" \
+            "archive_path=${ZIP_PATH}" \
+            "archive_name=Smeta.app.zip" \
+            "archive_sha256=${ZIP_SHA256}" \
+            "archive_size_bytes=${ZIP_SIZE_BYTES}" \
+            "runner_os=${RUNNER_OS}" \
+            "runner_environment=github-hosted" \
+            > "$MANIFEST_PATH"
+
       - name: Upload unit/build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
