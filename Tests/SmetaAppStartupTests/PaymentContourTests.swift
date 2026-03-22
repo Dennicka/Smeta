@@ -18,7 +18,8 @@ final class PaymentContourTests: XCTestCase {
 
         let payments = try repo.documentPayments(documentId: invoiceId)
         XCTAssertEqual(payments.count, 1)
-        XCTAssertEqual(payments.first?.amount, 300, accuracy: 0.0001)
+        let firstPayment = try XCTUnwrap(payments.first)
+        XCTAssertEqual(firstPayment.amount, 300, accuracy: 0.0001)
     }
 
     func testFinalPaymentClosesInvoice() throws {
@@ -136,7 +137,7 @@ final class PaymentContourTests: XCTestCase {
     func testRejectsPaymentForNonFakturaDocument() throws {
         let (repo, dbPath, projectId) = try makeRepository(tag: "non-faktura")
         defer { cleanupSQLiteArtifacts(at: dbPath) }
-        let avtalId = try createDocument(repository: repo, projectId: projectId, type: .avtal, status: DocumentStatus.finalized.rawValue, totalAmount: 500)
+        let avtalId = try createDocument(repository: repo, projectId: projectId, type: .avtal, status: DocumentStatus.finalized.rawValue, totalAmount: 500, balanceDue: 500)
 
         XCTAssertThrowsError(try repo.registerPayment(documentId: avtalId, amount: 100, method: "BG", reference: "NF"))
         XCTAssertEqual(try tableRowCount(repository: repo, tableName: "payments"), 0)
