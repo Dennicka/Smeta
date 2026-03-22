@@ -878,15 +878,27 @@ final class SQLiteDatabase {
         }
 
         guard let backup = sqlite3_backup_init(destinationDB, "main", sourceDB, "main") else {
-            throw DatabaseError.executeFailed(String(cString: sqlite3_errmsg(destinationDB)))
+            let code = sqlite3_errcode(destinationDB)
+            let message = String(cString: sqlite3_errmsg(destinationDB))
+            throw DatabaseError.executeFailed("sqlite3_backup_init failed (\(code)): \(message)")
         }
 
         let stepResult = sqlite3_backup_step(backup, -1)
         let finishResult = sqlite3_backup_finish(backup)
         guard stepResult == SQLITE_DONE, finishResult == SQLITE_OK else {
-            throw DatabaseError.executeFailed("Не удалось создать корректный backup-снимок")
+            let code = sqlite3_errcode(destinationDB)
+            let message = String(cString: sqlite3_errmsg(destinationDB))
+            throw DatabaseError.executeFailed(
+                "sqlite3_backup failed (step: \(stepResult), finish: \(finishResult), code: \(code)): \(message)"
+            )
         }
-        shouldCleanupDestination = false
+
+        do {
+            try validateBackup(at: destination)
+            shouldCleanupDestination = false
+        } catch {
+            throw DatabaseError.executeFailed("Созданный backup невалиден: \(error)")
+        }
     }
 
     func restoreDatabase(from source: URL) throws {
@@ -976,11 +988,19 @@ final class SQLiteDatabase {
             let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(backupDB, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
-                throw DatabaseError.executeFailed("Не удалось проверить структуру backup")
+                let code = sqlite3_errcode(backupDB)
+                let message = String(cString: sqlite3_errmsg(backupDB))
+                throw DatabaseError.executeFailed("Проверка структуры backup не выполнена (\(code)): \(message)")
             }
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_text(stmt, 1, table, -1, SQLITE_TRANSIENT)
-            if sqlite3_step(stmt) != SQLITE_ROW {
+            let stepResult = sqlite3_step(stmt)
+            if stepResult != SQLITE_ROW {
+                if stepResult != SQLITE_DONE {
+                    let code = sqlite3_errcode(backupDB)
+                    let message = String(cString: sqlite3_errmsg(backupDB))
+                    throw DatabaseError.executeFailed("Ошибка проверки backup (\(code)): \(message)")
+                }
                 throw DatabaseError.executeFailed("Backup несовместим: отсутствует таблица \(table)")
             }
         }
