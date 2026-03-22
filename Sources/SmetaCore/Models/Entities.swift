@@ -327,7 +327,9 @@ struct GeneratedDocument: PersistableEntity { var id: Int64; var estimateId: Int
 
 enum ProjectWorkflowStatus: String, CaseIterable { case draft, calculation, offertSent, offertApproved, avtalReady, workInProgress, readyForInvoice, invoiced, partiallyPaid, paid, credit, cancelled }
 enum DocumentType: String, CaseIterable { case offert, avtal, faktura, kreditfaktura, ata, paminnelse }
-enum DocumentStatus: String, CaseIterable { case draft, generated, finalized, sent, paid, cancelled, credited }
+enum DocumentStatus: String, CaseIterable {
+    case draft, generated, finalized, sent, partiallyPaid = "partially_paid", paid, cancelled, credited
+}
 enum CustomerType: String, CaseIterable { case b2c, b2b }
 enum TaxMode: String, CaseIterable { case normal, reverseCharge }
 

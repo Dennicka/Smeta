@@ -187,26 +187,86 @@ extension AppRepository {
 
     func registerPayment(documentId: Int64, amount: Double, method: String, reference: String) throws {
         guard amount > 0 else { throw DatabaseError.executeFailed("Сумма оплаты должна быть больше нуля") }
+        let epsilon = 0.000_000_1
 
-        var balanceDue: Double = -1
-        try db.withStatement("SELECT balance_due FROM business_documents WHERE id=?") { s in
-            sqlite3_bind_int64(s, 1, documentId)
-            if sqlite3_step(s) == SQLITE_ROW {
-                balanceDue = sqlite3_column_double(s, 0)
+        try db.execute("BEGIN IMMEDIATE TRANSACTION;")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK;")
             }
         }
+
+        var documentType = ""
+        var documentStatus = ""
+        var balanceDue: Double = -1
+        try db.withStatement("SELECT type,status,balance_due FROM business_documents WHERE id=? LIMIT 1") { s in
+            sqlite3_bind_int64(s, 1, documentId)
+            if sqlite3_step(s) == SQLITE_ROW {
+                documentType = text2(s, 0)
+                documentStatus = text2(s, 1)
+                balanceDue = sqlite3_column_double(s, 2)
+            }
+        }
+
         guard balanceDue >= 0 else { throw DatabaseError.executeFailed("Счёт не найден") }
-        guard amount <= balanceDue else { throw DatabaseError.executeFailed("Оплата превышает остаток по счёту") }
+        guard documentType == DocumentType.faktura.rawValue else { throw DatabaseError.executeFailed("Оплата доступна только для Faktura") }
+        let allowedStatuses: Set<String> = [DocumentStatus.finalized.rawValue, DocumentStatus.sent.rawValue, DocumentStatus.partiallyPaid.rawValue]
+        guard allowedStatuses.contains(documentStatus) else {
+            throw DatabaseError.executeFailed("Оплата доступна только для финализированной Faktura")
+        }
+        guard balanceDue > epsilon else { throw DatabaseError.executeFailed("Счёт уже закрыт") }
+        guard amount <= balanceDue + epsilon else { throw DatabaseError.executeFailed("Оплата превышает остаток по счёту") }
+
+        let newBalance = max(balanceDue - amount, 0)
+        let newStatus = newBalance <= epsilon ? DocumentStatus.paid.rawValue : DocumentStatus.partiallyPaid.rawValue
 
         try db.withStatement("INSERT INTO payments (amount,paid_at,method,reference) VALUES (?,?,?,?)") { s in
-            sqlite3_bind_double(s, 1, amount); sqlite3_bind_double(s, 2, Date().timeIntervalSince1970); bind2(s, 3, method); bind2(s, 4, reference); try step2(s)
+            sqlite3_bind_double(s, 1, amount)
+            sqlite3_bind_double(s, 2, Date().timeIntervalSince1970)
+            bind2(s, 3, method)
+            bind2(s, 4, reference)
+            try step2(s)
         }
         let paymentId = db.lastInsertedRowID()
         try db.withStatement("INSERT INTO payment_allocations (payment_id,document_id,amount) VALUES (?,?,?)") { s in
-            sqlite3_bind_int64(s, 1, paymentId); sqlite3_bind_int64(s, 2, documentId); sqlite3_bind_double(s, 3, amount); try step2(s)
+            sqlite3_bind_int64(s, 1, paymentId)
+            sqlite3_bind_int64(s, 2, documentId)
+            sqlite3_bind_double(s, 3, amount)
+            try step2(s)
         }
-        try db.withStatement("UPDATE business_documents SET paid_amount=paid_amount+?, balance_due=MAX(balance_due-?,0), status=CASE WHEN balance_due-?<=0 THEN 'paid' ELSE 'sent' END WHERE id=?") { s in
-            sqlite3_bind_double(s, 1, amount); sqlite3_bind_double(s, 2, amount); sqlite3_bind_double(s, 3, amount); sqlite3_bind_int64(s, 4, documentId); try step2(s)
+        try db.withStatement("UPDATE business_documents SET paid_amount=paid_amount+?, balance_due=?, status=? WHERE id=?") { s in
+            sqlite3_bind_double(s, 1, amount)
+            sqlite3_bind_double(s, 2, newBalance <= epsilon ? 0 : newBalance)
+            bind2(s, 3, newStatus)
+            sqlite3_bind_int64(s, 4, documentId)
+            try step2(s)
+        }
+
+        try db.execute("COMMIT;")
+        committed = true
+    }
+
+    func documentPayments(documentId: Int64) throws -> [DocumentPaymentEntry] {
+        try fetchWithBind2(
+            """
+            SELECT pa.id,pa.document_id,p.id,pa.amount,p.paid_at,p.method,p.reference
+            FROM payment_allocations pa
+            INNER JOIN payments p ON p.id=pa.payment_id
+            WHERE pa.document_id=?
+            ORDER BY p.paid_at DESC, pa.id DESC
+            """,
+            bindValue: documentId
+        ) { s in
+            DocumentPaymentEntry(
+                id: sqlite3_column_int64(s, 0),
+                documentId: sqlite3_column_int64(s, 1),
+                paymentId: sqlite3_column_int64(s, 2),
+                amount: sqlite3_column_double(s, 3),
+                paidAt: Date(timeIntervalSince1970: sqlite3_column_double(s, 4)),
+                method: text2(s, 5),
+                reference: text2(s, 6)
+            )
         }
     }
 

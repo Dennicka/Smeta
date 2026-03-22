@@ -106,6 +106,7 @@ final class AppViewModel: ObservableObject {
     @Published var templates: [DocumentTemplate] = []
     @Published var generatedDocuments: [GeneratedDocument] = []
     @Published var businessDocuments: [BusinessDocument] = []
+    @Published var paymentsByDocumentId: [Int64: [DocumentPaymentEntry]] = [:]
     @Published var documentSeries: [DocumentSeries] = []
     @Published var taxProfiles: [TaxProfile] = []
     @Published var suppliers: [Supplier] = []
@@ -278,6 +279,9 @@ final class AppViewModel: ObservableObject {
             templates = try repository.templates()
             generatedDocuments = try repository.generatedDocuments()
             businessDocuments = try repository.businessDocuments()
+            paymentsByDocumentId = Dictionary(uniqueKeysWithValues: try businessDocuments.map { document in
+                (document.id, try repository.documentPayments(documentId: document.id))
+            })
             documentSeries = try repository.documentSeries()
             taxProfiles = try repository.taxProfiles()
             calculationRules = try repository.calculationRules()
@@ -312,6 +316,7 @@ final class AppViewModel: ObservableObject {
         let templates: [DocumentTemplate]
         let generatedDocuments: [GeneratedDocument]
         let businessDocuments: [BusinessDocument]
+        let paymentsByDocumentId: [Int64: [DocumentPaymentEntry]]
         let documentSeries: [DocumentSeries]
         let taxProfiles: [TaxProfile]
         let suppliers: [Supplier]
@@ -338,6 +343,7 @@ final class AppViewModel: ObservableObject {
                           templates: vm.templates,
                           generatedDocuments: vm.generatedDocuments,
                           businessDocuments: vm.businessDocuments,
+                          paymentsByDocumentId: vm.paymentsByDocumentId,
                           documentSeries: vm.documentSeries,
                           taxProfiles: vm.taxProfiles,
                           suppliers: vm.suppliers,
@@ -365,6 +371,7 @@ final class AppViewModel: ObservableObject {
             vm.templates = templates
             vm.generatedDocuments = generatedDocuments
             vm.businessDocuments = businessDocuments
+            vm.paymentsByDocumentId = paymentsByDocumentId
             vm.documentSeries = documentSeries
             vm.taxProfiles = taxProfiles
             vm.suppliers = suppliers
@@ -1437,13 +1444,16 @@ final class AppViewModel: ObservableObject {
         return properties.first(where: { $0.id == project.propertyId }) ?? (try? repository.properties().first(where: { $0.id == project.propertyId }))
     }
 
-    func addPayment(documentId: Int64, amount: Double, method: String, reference: String) {
+    @discardableResult
+    func addPayment(documentId: Int64, amount: Double, method: String, reference: String) -> Bool {
         do {
             try repository.registerPayment(documentId: documentId, amount: amount, method: method, reference: reference)
             infoMessage = "Оплата добавлена"
             try reloadAll()
+            return true
         } catch {
             errorMessage = "Не удалось добавить оплату: \(error.localizedDescription)"
+            return false
         }
     }
 

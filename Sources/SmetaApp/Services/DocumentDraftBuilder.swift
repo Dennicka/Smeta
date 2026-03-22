@@ -243,7 +243,12 @@ struct DocumentDraftBuilder {
         guard context.company != nil else { return .incomplete("Företagsuppgifter saknas") }
         guard context.client != nil else { return .incomplete("Kunduppgifter saknas") }
 
-        guard let invoice = latestSourceDocument(in: context, type: .faktura, requiringBalanceDue: true) else {
+        guard let invoice = latestSourceDocument(
+            in: context,
+            type: .faktura,
+            requiringBalanceDue: true,
+            allowedStatuses: [DocumentStatus.finalized.rawValue, DocumentStatus.sent.rawValue, DocumentStatus.partiallyPaid.rawValue]
+        ) else {
             return .incomplete("Påminnelse kan inte skapas utan obetald Faktura")
         }
 
@@ -372,10 +377,11 @@ struct DocumentDraftBuilder {
     private func latestSourceDocument(
         in context: DocumentBuildContext,
         type: DocumentType,
-        requiringBalanceDue: Bool = false
+        requiringBalanceDue: Bool = false,
+        allowedStatuses: Set<String> = [DocumentStatus.finalized.rawValue]
     ) -> BusinessDocument? {
         context.businessDocuments
-            .filter { $0.type == type.rawValue && $0.status == DocumentStatus.finalized.rawValue }
+            .filter { $0.type == type.rawValue && allowedStatuses.contains($0.status) }
             .filter { !requiringBalanceDue || $0.balanceDue > 0 }
             .sorted(by: { $0.issueDate > $1.issueDate })
             .first

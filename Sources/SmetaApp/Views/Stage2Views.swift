@@ -59,20 +59,57 @@ struct InvoiceEditorView: View {
 struct PaymentsView: View {
     @EnvironmentObject private var vm: AppViewModel
     @State private var amountsByDocument: [Int64: Double] = [:]
+    @State private var methodsByDocument: [Int64: String] = [:]
+    @State private var referencesByDocument: [Int64: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading) {
             Text("Payments").font(.largeTitle).bold()
             ForEach(vm.businessDocuments.filter { $0.type == DocumentType.faktura.rawValue }) { doc in
-                HStack {
-                    Text("\(doc.number.isEmpty ? "draft" : doc.number) saldo: \(doc.balanceDue, specifier: "%.2f")")
-                    TextField("Сумма", value: paymentBinding(for: doc.id), format: .number)
-                        .frame(width: 120)
-                    Button("Внести") {
-                        let amount = amountsByDocument[doc.id, default: 0]
-                        vm.addPayment(documentId: doc.id, amount: amount, method: "Bankgiro", reference: "manual")
+                let isPayable = isDocumentPayable(doc)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("\(doc.number.isEmpty ? "draft" : doc.number) [\(doc.status)]")
+                        Spacer()
+                        Text("Paid: \(doc.paidAmount, specifier: "%.2f")  Due: \(doc.balanceDue, specifier: "%.2f")")
+                    }
+                    HStack {
+                        TextField("Сумма", value: paymentBinding(for: doc.id), format: .number)
+                            .frame(width: 120)
+                        TextField("Method", text: methodBinding(for: doc.id))
+                            .frame(width: 140)
+                        TextField("Reference", text: referenceBinding(for: doc.id))
+                            .frame(width: 140)
+                        Button("Внести") {
+                            let amount = amountsByDocument[doc.id, default: 0]
+                            let method = methodsByDocument[doc.id, default: "Bankgiro"]
+                            let reference = referencesByDocument[doc.id, default: "manual"]
+                            if vm.addPayment(documentId: doc.id, amount: amount, method: method, reference: reference) {
+                                amountsByDocument[doc.id] = 0
+                            }
+                        }
+                        .disabled(!isPayable)
+                    }
+
+                    if !isPayable {
+                        Text("Оплата недоступна: документ должен быть final/sent/partial с положительным остатком")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    let payments = vm.paymentsByDocumentId[doc.id, default: []]
+                    if payments.isEmpty {
+                        Text("Платежей пока нет")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(payments) { payment in
+                            Text("• \(payment.amount, specifier: "%.2f") \(payment.method) \(payment.reference)")
+                                .font(.caption)
+                        }
                     }
                 }
+                .padding(.vertical, 4)
             }
         }
     }
@@ -82,6 +119,31 @@ struct PaymentsView: View {
             get: { amountsByDocument[documentId, default: 0] },
             set: { amountsByDocument[documentId] = $0 }
         )
+    }
+
+    private func methodBinding(for documentId: Int64) -> Binding<String> {
+        Binding(
+            get: { methodsByDocument[documentId, default: "Bankgiro"] },
+            set: { methodsByDocument[documentId] = $0 }
+        )
+    }
+
+    private func referenceBinding(for documentId: Int64) -> Binding<String> {
+        Binding(
+            get: { referencesByDocument[documentId, default: "manual"] },
+            set: { referencesByDocument[documentId] = $0 }
+        )
+    }
+
+    private func isDocumentPayable(_ doc: BusinessDocument) -> Bool {
+        guard doc.type == DocumentType.faktura.rawValue else { return false }
+        guard doc.balanceDue > 0 else { return false }
+        let allowed = Set([
+            DocumentStatus.finalized.rawValue,
+            DocumentStatus.sent.rawValue,
+            DocumentStatus.partiallyPaid.rawValue
+        ])
+        return allowed.contains(doc.status)
     }
 }
 

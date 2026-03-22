@@ -357,7 +357,9 @@ struct GeneratedDocument: PersistableEntity { var id: Int64; var estimateId: Int
 
 enum ProjectWorkflowStatus: String, CaseIterable { case draft, calculation, offertSent, offertApproved, avtalReady, workInProgress, readyForInvoice, invoiced, partiallyPaid, paid, credit, cancelled }
 enum DocumentType: String, CaseIterable { case offert, avtal, faktura, kreditfaktura, ata, paminnelse }
-enum DocumentStatus: String, CaseIterable { case draft, generated, finalized, sent, paid, cancelled, credited }
+enum DocumentStatus: String, CaseIterable {
+    case draft, generated, finalized, sent, partiallyPaid = "partially_paid", paid, cancelled, credited
+}
 enum CustomerType: String, CaseIterable { case b2c, b2b }
 enum TaxMode: String, CaseIterable { case normal, reverseCharge }
 
@@ -372,6 +374,15 @@ struct ProjectStatusHistory: PersistableEntity { var id: Int64; var projectId: I
 struct DocumentSnapshot: PersistableEntity { var id: Int64; var documentId: Int64; var templateId: Int64?; var snapshotJSON: String; var createdAt: Date }
 struct Payment: PersistableEntity { var id: Int64; var amount: Double; var paidAt: Date; var method: String; var reference: String }
 struct PaymentAllocation: PersistableEntity { var id: Int64; var paymentId: Int64; var documentId: Int64; var amount: Double }
+struct DocumentPaymentEntry: PersistableEntity {
+    var id: Int64
+    var documentId: Int64
+    var paymentId: Int64
+    var amount: Double
+    var paidAt: Date
+    var method: String
+    var reference: String
+}
 
 struct ImmutableDocumentSnapshot: Codable {
     var schemaVersion: Int
