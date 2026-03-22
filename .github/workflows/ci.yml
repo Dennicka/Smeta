@@ -37,6 +37,12 @@ jobs:
       - name: Verify macOS app build contour
         run: bash Scripts/verify_macos_app_build_contour.sh
 
+      - name: Package release app artifact
+        run: |
+          test -d release/Smeta.app
+          mkdir -p release/dist
+          ditto -c -k --sequesterRsrc --keepParent release/Smeta.app release/dist/Smeta.app.zip
+
       - name: Upload unit/build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,6 +55,15 @@ jobs:
             release/contour-logs/**
             release/**/contour*.log
             release/**/*contour*.log
+
+      - name: Upload release app artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smeta-release-app
+          if-no-files-found: error
+          path: |
+            release/dist/**
 
   runtime-ui-smoke:
     name: Runtime UI Smoke (self-hosted macOS)

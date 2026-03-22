@@ -79,9 +79,38 @@ Runtime smoke job (`runtime-ui-smoke`) uploads:
 
 - `release/smoke-logs/**`
 
+Hosted job (`unit-and-build`) also uploads release build artifact:
+
+- artifact name: `smeta-release-app`
+- content path: `release/dist/**`
+- archive produced in CI: `release/dist/Smeta.app.zip` (packaged from `release/Smeta.app`)
+
+## Release build artifacts (hosted CI)
+
+The hosted `unit-and-build` job now packages the built app bundle after:
+
+- `swift test`
+- `bash Scripts/verify_macos_app_build_contour.sh`
+
+Packaging behavior:
+
+1. Verifies `release/Smeta.app` exists.
+2. Creates `release/dist`.
+3. Builds `release/dist/Smeta.app.zip` using macOS-native `ditto`, preserving the app bundle structure.
+
+Where to download:
+
+- Open a completed GitHub Actions run for workflow **CI**.
+- Open job **Unit and Build Contour**.
+- In **Artifacts**, download `smeta-release-app`.
+
+Important scope note:
+
+- `smeta-release-app` is a hosted CI build artifact for download/inspection.
+- It is **not** a runtime validation result and does **not** replace self-hosted runtime UI smoke checks.
+
 Why this matters:
 
 - failed runs keep actionable logs attached to the run page
 - local reproduction is faster because raw logs are downloadable
 - no need to rerun immediately just to inspect missing diagnostics
-
