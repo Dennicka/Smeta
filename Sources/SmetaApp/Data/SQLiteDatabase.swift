@@ -860,7 +860,8 @@ final class SQLiteDatabase {
 
         let manager = FileManager.default
         let folder = dbPath.deletingLastPathComponent()
-        let replacementURL = folder.appendingPathComponent("restore-replacement-\(UUID().uuidString).sqlite")
+        let baseName = dbPath.deletingPathExtension().lastPathComponent
+        let replacementURL = folder.appendingPathComponent("\(baseName)-restore-replacement-\(UUID().uuidString).sqlite")
         var rollbackURL: URL?
 
         try manager.copyItem(at: source, to: replacementURL)
@@ -868,11 +869,14 @@ final class SQLiteDatabase {
         try checkpointWAL(mode: "TRUNCATE")
 
         do {
-            sqlite3_close(db)
+            let closeResult = sqlite3_close(db)
+            guard closeResult == SQLITE_OK else {
+                throw DatabaseError.executeFailed("Не удалось закрыть соединение перед restore (sqlite code: \(closeResult))")
+            }
             db = nil
 
             if manager.fileExists(atPath: dbPath.path) {
-                let rollback = folder.appendingPathComponent("restore-rollback-\(UUID().uuidString).sqlite")
+                let rollback = folder.appendingPathComponent("\(baseName)-restore-rollback-\(UUID().uuidString).sqlite")
                 try manager.moveItem(at: dbPath, to: rollback)
                 rollbackURL = rollback
             }

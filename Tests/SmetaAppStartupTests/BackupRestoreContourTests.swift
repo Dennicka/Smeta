@@ -82,7 +82,10 @@ final class BackupRestoreContourTests: XCTestCase {
             XCTAssertFalse(names.contains("Cycle mutation \(cycle)"))
 
             let directoryItems = try FileManager.default.contentsOfDirectory(atPath: dbPath.deletingLastPathComponent().path)
-            XCTAssertFalse(directoryItems.contains(where: { $0.contains("restore-replacement-") || $0.contains("restore-rollback-") }))
+            let baseName = dbPath.deletingPathExtension().lastPathComponent
+            XCTAssertFalse(directoryItems.contains(where: {
+                $0.hasPrefix("\(baseName)-restore-replacement-") || $0.hasPrefix("\(baseName)-restore-rollback-")
+            }))
         }
     }
 
