@@ -24,6 +24,14 @@ final class BackupService {
 
     init(db: SQLiteDatabase) { self.db = db }
 
+    func backupDatabase(to backupURL: URL) throws {
+        try db.copyDatabase(to: backupURL)
+    }
+
+    func restoreDatabase(from backupURL: URL) throws {
+        try db.restoreDatabase(from: backupURL)
+    }
+
     func backupViaDialog() throws {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = backupFileName()
@@ -34,7 +42,7 @@ final class BackupService {
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
-        try db.copyDatabase(to: url)
+        try backupDatabase(to: url)
     }
 
     func restoreViaDialog() throws {
@@ -47,7 +55,7 @@ final class BackupService {
         guard confirmRestore(for: url) else {
             throw BackupServiceError.restoreConfirmationDeclined
         }
-        try db.restoreDatabase(from: url)
+        try restoreDatabase(from: url)
     }
 
     func dataLocation() -> URL {
@@ -85,6 +93,14 @@ final class BackupService {
     private let db: SQLiteDatabase
 
     init(db: SQLiteDatabase) { self.db = db }
+
+    func backupDatabase(to backupURL: URL) throws {
+        try db.copyDatabase(to: backupURL)
+    }
+
+    func restoreDatabase(from backupURL: URL) throws {
+        try db.restoreDatabase(from: backupURL)
+    }
 
     func backupViaDialog() throws { throw BackupServiceError.unsupportedPlatform }
     func restoreViaDialog() throws { throw BackupServiceError.unsupportedPlatform }

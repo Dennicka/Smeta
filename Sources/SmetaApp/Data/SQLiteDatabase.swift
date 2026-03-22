@@ -848,16 +848,74 @@ final class SQLiteDatabase {
     ]
 
     func copyDatabase(to destination: URL) throws {
+        try checkpointWAL(mode: "FULL")
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
         try FileManager.default.copyItem(at: dbPath, to: destination)
     }
 
     func restoreDatabase(from source: URL) throws {
         try validateBackup(at: source)
-        sqlite3_close(db)
-        if FileManager.default.fileExists(atPath: dbPath.path) {
-            try FileManager.default.removeItem(at: dbPath)
+
+        let manager = FileManager.default
+        let folder = dbPath.deletingLastPathComponent()
+        let replacementURL = folder.appendingPathComponent("restore-replacement-\(UUID().uuidString).sqlite")
+        var rollbackURL: URL?
+
+        try manager.copyItem(at: source, to: replacementURL)
+
+        try checkpointWAL(mode: "TRUNCATE")
+
+        do {
+            sqlite3_close(db)
+            db = nil
+
+            if manager.fileExists(atPath: dbPath.path) {
+                let rollback = folder.appendingPathComponent("restore-rollback-\(UUID().uuidString).sqlite")
+                try manager.moveItem(at: dbPath, to: rollback)
+                rollbackURL = rollback
+            }
+
+            try manager.moveItem(at: replacementURL, to: dbPath)
+            try removeSQLiteSidecars(for: dbPath)
+
+            try reopenConnection()
+
+            if let rollbackURL, manager.fileExists(atPath: rollbackURL.path) {
+                try manager.removeItem(at: rollbackURL)
+            }
+        } catch {
+            if manager.fileExists(atPath: dbPath.path) {
+                try? manager.removeItem(at: dbPath)
+            }
+            if let rollbackURL, manager.fileExists(atPath: rollbackURL.path) {
+                try? manager.moveItem(at: rollbackURL, to: dbPath)
+            }
+            if manager.fileExists(atPath: replacementURL.path) {
+                try? manager.removeItem(at: replacementURL)
+            }
+            try reopenConnection()
+            throw error
         }
-        try FileManager.default.copyItem(at: source, to: dbPath)
+    }
+
+
+    private func checkpointWAL(mode: String) throws {
+        try execute("PRAGMA wal_checkpoint(\(mode));")
+    }
+
+    private func removeSQLiteSidecars(for databaseURL: URL) throws {
+        let manager = FileManager.default
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: databaseURL.path + suffix)
+            if manager.fileExists(atPath: sidecar.path) {
+                try manager.removeItem(at: sidecar)
+            }
+        }
+    }
+
+    private func reopenConnection() throws {
         if sqlite3_open(dbPath.path, &db) != SQLITE_OK {
             throw DatabaseError.openFailed
         }
