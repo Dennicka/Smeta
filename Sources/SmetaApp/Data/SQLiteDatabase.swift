@@ -872,8 +872,8 @@ final class SQLiteDatabase {
         }
         defer {
             closeDestinationHandle()
-            if shouldCleanupDestination, manager.fileExists(atPath: destination.path) {
-                try? manager.removeItem(at: destination)
+            if shouldCleanupDestination {
+                try? removeItemIfExists(destination, using: manager)
             }
         }
 
@@ -928,9 +928,8 @@ final class SQLiteDatabase {
             }
             db = nil
 
-            if manager.fileExists(atPath: dbPath.path) {
-                let rollback = folder.appendingPathComponent("\(baseName)-restore-rollback-\(UUID().uuidString).sqlite")
-                try manager.moveItem(at: dbPath, to: rollback)
+            let rollback = folder.appendingPathComponent("\(baseName)-restore-rollback-\(UUID().uuidString).sqlite")
+            if try moveItemIfPresent(from: dbPath, to: rollback, using: manager) {
                 rollbackURL = rollback
             }
 
@@ -939,19 +938,15 @@ final class SQLiteDatabase {
 
             try reopenConnection()
 
-            if let rollbackURL, manager.fileExists(atPath: rollbackURL.path) {
+            if let rollbackURL {
                 try removeItemIfExists(rollbackURL, using: manager)
             }
         } catch {
-            if manager.fileExists(atPath: dbPath.path) {
-                try? manager.removeItem(at: dbPath)
+            try? removeItemIfExists(dbPath, using: manager)
+            if let rollbackURL {
+                try? moveItemIfPresent(from: rollbackURL, to: dbPath, using: manager)
             }
-            if let rollbackURL, manager.fileExists(atPath: rollbackURL.path) {
-                try? manager.moveItem(at: rollbackURL, to: dbPath)
-            }
-            if manager.fileExists(atPath: replacementURL.path) {
-                try? manager.removeItem(at: replacementURL)
-            }
+            try? removeItemIfExists(replacementURL, using: manager)
             try reopenConnection()
             throw error
         }
@@ -974,8 +969,22 @@ final class SQLiteDatabase {
         do {
             try manager.removeItem(at: url)
         } catch let error as NSError {
-            if error.domain == NSCocoaErrorDomain, error.code == NSFileNoSuchFileError {
+            if (error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError) ||
+                (error.domain == NSPOSIXErrorDomain && error.code == ENOENT) {
                 return
+            }
+            throw error
+        }
+    }
+
+    private func moveItemIfPresent(from sourceURL: URL, to destinationURL: URL, using manager: FileManager) throws -> Bool {
+        do {
+            try manager.moveItem(at: sourceURL, to: destinationURL)
+            return true
+        } catch let error as NSError {
+            if (error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError) ||
+                (error.domain == NSPOSIXErrorDomain && error.code == ENOENT) {
+                return false
             }
             throw error
         }
