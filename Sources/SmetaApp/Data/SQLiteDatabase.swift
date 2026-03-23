@@ -848,16 +848,148 @@ final class SQLiteDatabase {
     ]
 
     func copyDatabase(to destination: URL) throws {
-        try FileManager.default.copyItem(at: dbPath, to: destination)
+        try removeItemIfPresent(destination)
+        var shouldCleanupDestination = true
+
+        var destinationDB: OpaquePointer?
+        let openResult = sqlite3_open_v2(
+            destination.path,
+            &destinationDB,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+            nil
+        )
+        guard openResult == SQLITE_OK, let destinationDB else {
+            throw DatabaseError.executeFailed("Не удалось открыть файл backup для записи")
+        }
+
+        var destinationHandle: OpaquePointer? = destinationDB
+        func closeDestinationHandle() {
+            guard let destinationHandle else { return }
+            if sqlite3_close(destinationHandle) != SQLITE_OK {
+                sqlite3_close_v2(destinationHandle)
+            }
+        }
+        defer {
+            closeDestinationHandle()
+            if shouldCleanupDestination {
+                try? removeItemIfPresent(destination)
+            }
+        }
+
+        guard let sourceDB = db else {
+            throw DatabaseError.executeFailed("Соединение с основной базой не открыто")
+        }
+
+        guard let backup = sqlite3_backup_init(destinationDB, "main", sourceDB, "main") else {
+            let code = sqlite3_errcode(destinationDB)
+            let message = String(cString: sqlite3_errmsg(destinationDB))
+            throw DatabaseError.executeFailed("sqlite3_backup_init failed (\(code)): \(message)")
+        }
+
+        let stepResult = sqlite3_backup_step(backup, -1)
+        let finishResult = sqlite3_backup_finish(backup)
+        guard stepResult == SQLITE_DONE, finishResult == SQLITE_OK else {
+            let code = sqlite3_errcode(destinationDB)
+            let message = String(cString: sqlite3_errmsg(destinationDB))
+            throw DatabaseError.executeFailed(
+                "sqlite3_backup failed (step: \(stepResult), finish: \(finishResult), code: \(code)): \(message)"
+            )
+        }
+
+        closeDestinationHandle()
+        destinationHandle = nil
+
+        do {
+            try validateBackup(at: destination)
+            shouldCleanupDestination = false
+        } catch {
+            throw DatabaseError.executeFailed("Созданный backup невалиден: \(error)")
+        }
     }
 
     func restoreDatabase(from source: URL) throws {
         try validateBackup(at: source)
-        sqlite3_close(db)
-        if FileManager.default.fileExists(atPath: dbPath.path) {
-            try FileManager.default.removeItem(at: dbPath)
+
+        let manager = FileManager.default
+        let folder = dbPath.deletingLastPathComponent()
+        let baseName = dbPath.deletingPathExtension().lastPathComponent
+        let replacementURL = folder.appendingPathComponent("\(baseName)-restore-replacement-\(UUID().uuidString).sqlite")
+        var rollbackURL: URL?
+
+        try manager.copyItem(at: source, to: replacementURL)
+
+        try checkpointWAL(mode: "TRUNCATE")
+
+        do {
+            let closeResult = sqlite3_close(db)
+            guard closeResult == SQLITE_OK else {
+                throw DatabaseError.executeFailed("Не удалось закрыть соединение перед restore (sqlite code: \(closeResult))")
+            }
+            db = nil
+
+            let rollback = folder.appendingPathComponent("\(baseName)-restore-rollback-\(UUID().uuidString).sqlite")
+            if try moveItemIfPresent(from: dbPath, to: rollback, using: manager) {
+                rollbackURL = rollback
+            }
+
+            try manager.moveItem(at: replacementURL, to: dbPath)
+            try removeSQLiteSidecars(for: dbPath)
+
+            try reopenConnection()
+
+            if let rollbackURL {
+                try removeItemIfPresent(rollbackURL)
+            }
+        } catch {
+            try? removeItemIfPresent(dbPath)
+            if let rollbackURL {
+                try? moveItemIfPresent(from: rollbackURL, to: dbPath, using: manager)
+            }
+            try? removeItemIfPresent(replacementURL)
+            try reopenConnection()
+            throw error
         }
-        try FileManager.default.copyItem(at: source, to: dbPath)
+    }
+
+
+    private func checkpointWAL(mode: String) throws {
+        try execute("PRAGMA wal_checkpoint(\(mode));")
+    }
+
+    private func removeSQLiteSidecars(for databaseURL: URL) throws {
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: databaseURL.path + suffix)
+            try removeItemIfPresent(sidecar)
+        }
+    }
+
+    private func removeItemIfPresent(_ url: URL) throws {
+        let manager = FileManager.default
+        do {
+            try manager.removeItem(at: url)
+        } catch let error as NSError {
+            if (error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError) ||
+                (error.domain == NSPOSIXErrorDomain && error.code == ENOENT) {
+                return
+            }
+            throw error
+        }
+    }
+
+    private func moveItemIfPresent(from sourceURL: URL, to destinationURL: URL, using manager: FileManager) throws -> Bool {
+        do {
+            try manager.moveItem(at: sourceURL, to: destinationURL)
+            return true
+        } catch let error as NSError {
+            if (error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError) ||
+                (error.domain == NSPOSIXErrorDomain && error.code == ENOENT) {
+                return false
+            }
+            throw error
+        }
+    }
+
+    private func reopenConnection() throws {
         if sqlite3_open(dbPath.path, &db) != SQLITE_OK {
             throw DatabaseError.openFailed
         }
@@ -880,11 +1012,19 @@ final class SQLiteDatabase {
             let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(backupDB, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
-                throw DatabaseError.executeFailed("Не удалось проверить структуру backup")
+                let code = sqlite3_errcode(backupDB)
+                let message = String(cString: sqlite3_errmsg(backupDB))
+                throw DatabaseError.executeFailed("Проверка структуры backup не выполнена (\(code)): \(message)")
             }
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_text(stmt, 1, table, -1, SQLITE_TRANSIENT)
-            if sqlite3_step(stmt) != SQLITE_ROW {
+            let stepResult = sqlite3_step(stmt)
+            if stepResult != SQLITE_ROW {
+                if stepResult != SQLITE_DONE {
+                    let code = sqlite3_errcode(backupDB)
+                    let message = String(cString: sqlite3_errmsg(backupDB))
+                    throw DatabaseError.executeFailed("Ошибка проверки backup (\(code)): \(message)")
+                }
                 throw DatabaseError.executeFailed("Backup несовместим: отсутствует таблица \(table)")
             }
         }
