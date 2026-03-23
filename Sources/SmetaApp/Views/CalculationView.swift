@@ -46,6 +46,7 @@ struct CalculationView: View {
             Button("Рассчитать") { vm.calculate() }
                 .accessibilityIdentifier("smoke.calculate.run")
                 .disabled(SmokeRuntimeConfig.shouldDisableCalculationAction)
+            Button("Сохранить смету") { vm.saveEstimate() }
         }
     }
 

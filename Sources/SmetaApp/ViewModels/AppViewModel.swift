@@ -899,6 +899,46 @@ final class AppViewModel: ObservableObject {
                                                  rules: calculationRules)
     }
 
+    func saveEstimate() {
+        do {
+            guard let project = selectedProject else {
+                errorMessage = "Выберите проект перед сохранением сметы"
+                return
+            }
+            let speed = try synchronizedSpeedProfileForSelectedProject(context: "estimate-save")
+            guard let calc = calculationResult else {
+                errorMessage = "Сначала выполните расчёт, затем сохраните смету"
+                return
+            }
+
+            let validRoomIds = Set(rooms.filter { $0.projectId == project.id }.map(\.id))
+            let estimateLineDrafts = try calc.rows.map { row in
+                try EstimateLineIdentityValidator.makeEstimateLineDraft(
+                    row: row,
+                    validRoomIds: validRoomIds
+                )
+            }
+
+            _ = try repository.performEstimateSaveWrites(
+                payload: AppRepository.EstimateSaveWritePayload(
+                    estimate: Estimate(
+                        id: 0,
+                        projectId: project.id,
+                        speedProfileId: speed.id,
+                        laborRatePerHour: laborRatePerHour,
+                        overheadCoefficient: overheadCoefficient,
+                        createdAt: Date()
+                    ),
+                    estimateLineDrafts: estimateLineDrafts
+                )
+            )
+            try reloadAll()
+            infoMessage = "Смета сохранена"
+        } catch {
+            present(error: error, prefix: "Ошибка сохранения сметы")
+        }
+    }
+
     func saveEstimateAndGenerateDocument() {
         do {
             guard let project = selectedProject else {
@@ -1337,6 +1377,7 @@ final class AppViewModel: ObservableObject {
 
     func exportDocumentPDF(_ doc: BusinessDocument) {
         let supportedTypes: Set<String> = [
+            DocumentType.offert.rawValue,
             DocumentType.avtal.rawValue,
             DocumentType.faktura.rawValue,
             DocumentType.kreditfaktura.rawValue,
@@ -1344,7 +1385,7 @@ final class AppViewModel: ObservableObject {
             DocumentType.paminnelse.rawValue
         ]
         guard supportedTypes.contains(doc.type) else {
-            errorMessage = "Export поддержан только для Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse"
+            errorMessage = "Export поддержан только для Offert/Avtal/Faktura/Kreditfaktura/ÄTA/Påminnelse"
             return
         }
 

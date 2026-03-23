@@ -28,7 +28,7 @@ struct DocumentsView: View {
                     if doc.status == DocumentStatus.draft.rawValue {
                         Button("Finalize") { vm.finalizeDocument(doc) }
                     }
-                    if [DocumentType.avtal.rawValue, DocumentType.faktura.rawValue, DocumentType.kreditfaktura.rawValue, DocumentType.ata.rawValue, DocumentType.paminnelse.rawValue].contains(doc.type) {
+                    if [DocumentType.offert.rawValue, DocumentType.avtal.rawValue, DocumentType.faktura.rawValue, DocumentType.kreditfaktura.rawValue, DocumentType.ata.rawValue, DocumentType.paminnelse.rawValue].contains(doc.type) {
                         Button("Export PDF") { vm.exportDocumentPDF(doc) }
                     }
                 }

@@ -644,6 +644,42 @@ final class AppRepository {
         return db.lastInsertedRowID()
     }
 
+    struct EstimateSaveWritePayload {
+        var estimate: Estimate
+        var estimateLineDrafts: [EstimateLineDraft]
+    }
+
+    func performEstimateSaveWrites(payload: EstimateSaveWritePayload) throws -> Int64 {
+        try db.execute("BEGIN IMMEDIATE TRANSACTION")
+        var committed = false
+        defer {
+            if !committed {
+                try? db.execute("ROLLBACK")
+            }
+        }
+
+        let estimateId = try insertEstimate(payload.estimate)
+        for draft in payload.estimateLineDrafts {
+            try insertEstimateLine(
+                EstimateLine(
+                    id: 0,
+                    estimateId: estimateId,
+                    roomId: draft.roomId,
+                    workItemId: draft.workItemId,
+                    materialItemId: draft.materialItemId,
+                    quantity: draft.quantity,
+                    unitPrice: draft.unitPrice,
+                    coefficient: draft.coefficient,
+                    type: draft.type
+                )
+            )
+        }
+
+        try db.execute("COMMIT")
+        committed = true
+        return estimateId
+    }
+
     func performOffertGenerationWrites(
         payload: OffertGenerationWritePayload,
         beforeCommit: (() throws -> Void)? = nil,
