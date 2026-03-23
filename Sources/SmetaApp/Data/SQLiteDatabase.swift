@@ -848,8 +848,7 @@ final class SQLiteDatabase {
     ]
 
     func copyDatabase(to destination: URL) throws {
-        let manager = FileManager.default
-        try removeItemIfPresent(destination, using: manager)
+        try removeItemIfPresent(destination)
         var shouldCleanupDestination = true
 
         var destinationDB: OpaquePointer?
@@ -873,7 +872,7 @@ final class SQLiteDatabase {
         defer {
             closeDestinationHandle()
             if shouldCleanupDestination {
-                try? removeItemIfPresent(destination, using: manager)
+                try? removeItemIfPresent(destination)
             }
         }
 
@@ -939,14 +938,14 @@ final class SQLiteDatabase {
             try reopenConnection()
 
             if let rollbackURL {
-                try removeItemIfPresent(rollbackURL, using: manager)
+                try removeItemIfPresent(rollbackURL)
             }
         } catch {
-            try? removeItemIfPresent(dbPath, using: manager)
+            try? removeItemIfPresent(dbPath)
             if let rollbackURL {
                 try? moveItemIfPresent(from: rollbackURL, to: dbPath, using: manager)
             }
-            try? removeItemIfPresent(replacementURL, using: manager)
+            try? removeItemIfPresent(replacementURL)
             try reopenConnection()
             throw error
         }
@@ -958,14 +957,14 @@ final class SQLiteDatabase {
     }
 
     private func removeSQLiteSidecars(for databaseURL: URL) throws {
-        let manager = FileManager.default
         for suffix in ["-wal", "-shm"] {
             let sidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            try removeItemIfPresent(sidecar, using: manager)
+            try removeItemIfPresent(sidecar)
         }
     }
 
-    private func removeItemIfPresent(_ url: URL, using manager: FileManager) throws {
+    private func removeItemIfPresent(_ url: URL) throws {
+        let manager = FileManager.default
         do {
             try manager.removeItem(at: url)
         } catch let error as NSError {
