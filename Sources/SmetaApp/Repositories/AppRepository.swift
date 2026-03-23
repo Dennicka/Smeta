@@ -646,7 +646,7 @@ final class AppRepository {
 
     struct EstimateSaveWritePayload {
         var estimate: Estimate
-        var estimateLineDrafts: [EstimateLineIdentityValidator.EstimateLineDraft]
+        var estimateLineDrafts: [EstimateLineDraft]
     }
 
     func performEstimateSaveWrites(payload: EstimateSaveWritePayload) throws -> Int64 {
