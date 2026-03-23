@@ -849,9 +849,7 @@ final class SQLiteDatabase {
 
     func copyDatabase(to destination: URL) throws {
         let manager = FileManager.default
-        if manager.fileExists(atPath: destination.path) {
-            try manager.removeItem(at: destination)
-        }
+        try removeItemIfExists(destination, using: manager)
         var shouldCleanupDestination = true
 
         var destinationDB: OpaquePointer?
@@ -942,7 +940,7 @@ final class SQLiteDatabase {
             try reopenConnection()
 
             if let rollbackURL, manager.fileExists(atPath: rollbackURL.path) {
-                try manager.removeItem(at: rollbackURL)
+                try removeItemIfExists(rollbackURL, using: manager)
             }
         } catch {
             if manager.fileExists(atPath: dbPath.path) {
@@ -968,9 +966,18 @@ final class SQLiteDatabase {
         let manager = FileManager.default
         for suffix in ["-wal", "-shm"] {
             let sidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            if manager.fileExists(atPath: sidecar.path) {
-                try manager.removeItem(at: sidecar)
+            try removeItemIfExists(sidecar, using: manager)
+        }
+    }
+
+    private func removeItemIfExists(_ url: URL, using manager: FileManager) throws {
+        do {
+            try manager.removeItem(at: url)
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain, error.code == NSFileNoSuchFileError {
+                return
             }
+            throw error
         }
     }
 
